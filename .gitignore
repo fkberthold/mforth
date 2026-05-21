@@ -3,3 +3,26 @@
 .dolt/
 *.db
 .beads-credential-key
+
+# Loom per-session ephemera (audit-project [AUTOFIX:gitignore-worktrees])
+.claude/worktrees/
+.claude/workflow-state.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+dist/
+build/
+*.egg-info/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
