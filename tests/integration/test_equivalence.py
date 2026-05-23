@@ -132,6 +132,20 @@ def _run_mlog(fs_path: Path, iterations: int) -> list:
                 UserVariable(name=spec.mforth_name, src_loc=src_loc)
             )
 
+    # Capture sidecar-pre-seeded UserVariable names — these are
+    # block-name handles (e.g. `display`, `sorter1`), not Forth user
+    # variables. The REPL's CONTROL / SENSOR / PRINTFLUSH primitives
+    # consume them as opaque handles WITHOUT going through
+    # world.read_variable, so the mlog interpreter must NOT emit
+    # VariableReadEvent for them either. We exclude these from the
+    # user_variables set fed to the interpreter; only source-declared
+    # `VARIABLE foo` names (which `resolve` adds AFTER this snapshot)
+    # are instrumented.
+    _sidecar_link_names = {
+        entry.name for entry in dictionary._entries.values()  # noqa: SLF001
+        if isinstance(entry, UserVariable)
+    }
+
     text = fs_path.read_text()
     program = parse(text, file=str(fs_path))
     dictionary = resolve(program, dictionary=dictionary)
@@ -145,8 +159,22 @@ def _run_mlog(fs_path: Path, iterations: int) -> list:
         sidecar_path=sidecar_path if sidecar_path.exists() else None,
     )
 
+    # mforth-0qi: feed the interpreter the names of source-declared
+    # Forth VARIABLEs (excluding sidecar-pre-seeded link names, which
+    # are block-name handles, not user variables) so reads/writes of
+    # those names emit VariableRead/VariableWriteEvent matching the
+    # host REPL. Without this, every program touching a VARIABLE
+    # diverged from the REPL on the event stream.
+    user_vars = {
+        entry.name for entry in dictionary._entries.values()  # noqa: SLF001
+        if isinstance(entry, UserVariable)
+        and entry.name not in _sidecar_link_names
+    }
+
     world = build_world(world_config)
-    interp = MlogInterpreter(world=world, text=mlog_text)
+    interp = MlogInterpreter(
+        world=world, text=mlog_text, user_variables=user_vars
+    )
     interp.run(iterations=iterations)
     return _filter_mode_b_prologue_events(list(world.events), world_config)
 

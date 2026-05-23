@@ -331,12 +331,33 @@ def _dot(ex: "Executor") -> None:
 def _print(ex: "Executor") -> None:
     """`PRINT` — ( str -- ) queue a value to the world's print buffer.
 
-    `world.print(str)` calls `str()` on its input and emits
-    `MessagePrintEvent(text=...)`. Numeric arguments are stringified
-    via Python's `str()` (matches mlog `print` which accepts any value).
+    Numeric formatting matches the in-game mlog `print` instruction
+    (and `mforth.mlog_interp._format_for_print`): integer-valued floats
+    render WITHOUT a trailing ``.0`` (so a float ``1.0`` on the data
+    stack emits text ``"1"``, matching what a real Mindustry message
+    block would show). This is the mforth-05h fix — without it, every
+    numeric PRINT diverged from the mlog interpreter on integer-valued
+    floats (REPL emitted ``"1.0"`` via Python's ``str(1.0)``; mlog
+    emitted ``"1"``), violating CLAUDE.md's headline REPL ↔ mlog
+    equivalence property.
+
+    Mirrors the formatting in ``_dot`` (the `.` primitive) so both IO
+    sinks render numerics identically.
+
+    ``world.print(text)`` emits ``MessagePrintEvent(text=...)`` exactly.
+    Booleans render as ``"1"`` / ``"0"`` (consistent with `.`); strings
+    pass through unchanged.
     """
     value = ex.data_stack.pop()
-    ex.world.print(value)
+    if isinstance(value, bool):
+        # Python bool is a subclass of int; check before the int branch
+        # so True doesn't render as "True".
+        text = "1" if value else "0"
+    elif isinstance(value, float) and value.is_integer():
+        text = str(int(value))
+    else:
+        text = str(value)
+    ex.world.print(text)
 
 
 def _printflush(ex: "Executor") -> None:

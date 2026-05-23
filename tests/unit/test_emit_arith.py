@@ -22,9 +22,13 @@ Contract pinned here (the M3 RED contract for this bead):
 * Literals: ``LitInt(v)`` at write-slot s<i>  →  ``("set", "s<i>", "<v>")``.
 * Arithmetic ``+ - * / MOD`` at slots (read=(s_a,s_b), write=(s_c,)) →
   ``("op", "<op>", "s<c>", "s<a>", "s<b>")`` with the mlog opcode being
-  the obvious name (``add sub mul div idiv mod``).  Note Forth ``/`` maps
-  to mlog ``idiv`` (integer division) — Forth tradition is integer-only on
-  ``/`` and only ``F/`` would mean floating divide; we follow tradition.
+  the obvious name (``add sub mul div mod``).  Note Forth ``/`` maps
+  to mlog ``div`` (FLOAT division) — mforth-dlr (2026-05-23) flipped this
+  from ``idiv`` so the mlog backend matches the host REPL primitive
+  (which uses Python's ``/``, also float). The convergence restored the
+  REPL ↔ mlog equivalence property (CLAUDE.md headline test class) on
+  every program using ``/``. Forth tradition prefers integer ``/``;
+  mforth's pragmatic dialect chooses Python-natural feel instead.
 * Comparison ``= <> < > <= >=`` map to mlog ``equal notEqual lessThan
   greaterThan lessThanEq greaterThanEq``.  mlog returns 0/1; we keep it.
   This is a deliberate dialect choice (NOT Forth's traditional 0/-1) —
@@ -147,7 +151,7 @@ def test_string_literal_emits_set_with_quoted_value():
         ("+", "add"),
         ("-", "sub"),
         ("*", "mul"),
-        ("/", "idiv"),
+        ("/", "div"),  # mforth-dlr: was "idiv" — flipped to match REPL
         ("MOD", "mod"),
     ],
 )

@@ -142,7 +142,7 @@ def test_blink_printed_values_increment_monotonically():
         if isinstance(e, MessagePrintEvent)
     ]
     texts = [e.text for e in prints]
-    assert texts == ["1.0", "2.0", "3.0", "4.0", "5.0"], (
+    assert texts == ["1", "2", "3", "4", "5"], (
         f"counter sequence drifted: {texts}"
     )
 
@@ -160,7 +160,7 @@ def test_blink_flush_targets_display_block_with_value_only():
     assert all(e.block_name == "display" for e in flushes), (
         f"unexpected block_name: {[e.block_name for e in flushes]}"
     )
-    assert [e.buffer for e in flushes] == ["1.0", "2.0", "3.0"]
+    assert [e.buffer for e in flushes] == ["1", "2", "3"]
 
 
 def test_blink_wait_advances_world_clock_one_second_per_tick():
@@ -253,8 +253,8 @@ def test_counter_runs_ten_iterations_with_expected_print_sequence():
     # Spec text was a 0-indexed approximation; here we pin the actual
     # 1-indexed sequence the implementation produces.
     assert [e.text for e in prints] == [
-        "1.0", "2.0", "3.0", "4.0", "5.0",
-        "6.0", "7.0", "8.0", "9.0", "10.0",
+        "1", "2", "3", "4", "5",
+        "6", "7", "8", "9", "10",
     ]
 
 
@@ -442,6 +442,15 @@ def _run_blink_or_counter_mlog(name: str, iterations: int) -> list:
                 UserVariable(name=spec.mforth_name, src_loc=src_loc)
             )
 
+    # mforth-0qi: capture sidecar-pre-seeded UserVariable names (block
+    # handles like `display`) so they are excluded from the
+    # interpreter's user_variables set. Only source-declared VARIABLEs
+    # get Variable-event instrumentation.
+    _sidecar_link_names = {
+        entry.name for entry in dictionary._entries.values()  # noqa: SLF001
+        if isinstance(entry, UserVariable)
+    }
+
     text = fs_path.read_text()
     program = parse(text, file=str(fs_path))
     dictionary = resolve(program, dictionary=dictionary)
@@ -455,24 +464,35 @@ def _run_blink_or_counter_mlog(name: str, iterations: int) -> list:
         sidecar_path=sidecar_path if sidecar_path.exists() else None,
     )
 
+    # mforth-0qi: route reads/writes of source-declared VARIABLE
+    # names through world.read_variable / world.write_variable so the
+    # mlog interpreter emits the same VariableRead/VariableWriteEvent
+    # stream the host REPL emits. Sidecar link names (e.g. `display`)
+    # are excluded — the REPL never instruments them either.
+    user_vars = {
+        entry.name for entry in dictionary._entries.values()  # noqa: SLF001
+        if isinstance(entry, UserVariable)
+        and entry.name not in _sidecar_link_names
+    }
+
     world = build_world(world_config)
-    interp = MlogInterpreter(world=world, text=mlog_text)
+    interp = MlogInterpreter(
+        world=world, text=mlog_text, user_variables=user_vars
+    )
     interp.run(iterations=iterations)
     return list(world.events)
 
 
-@pytest.mark.xfail(
-    reason="blink.fs equivalence blocked by Variable-event divergence "
-           "(mforth-0qi) + float-vs-int PRINT text divergence (mforth-05h). "
-           "XFAIL pins the gap; flips to xpass when either followup lands.",
-    strict=True,
-)
 def test_blink_repl_equivalent_to_mlog():
     """REPL events == mlog interpreter events for blink.fs.
 
-    Currently fails because:
-      * REPL emits VariableReadEvent/VariableWriteEvent (mlog does not).
-      * REPL PRINT text is "1.0"; mlog PRINT text is "1".
+    mforth-2i1 (2026-05-23) flipped this test from strict-xfail to
+    passing. The three convergence fixes that landed it:
+      * mforth-dlr — `/` emits `op div` (float), matching REPL.
+      * mforth-0qi — mlog interp emits VariableRead/VariableWriteEvent
+        for source-declared VARIABLEs (matching REPL).
+      * mforth-05h — host PRINT renders integer-valued floats without
+        a trailing `.0` (matching the in-game `print` instruction).
     """
     runner = _run_example("blink", iterations=3)
     events_repl = list(runner.executor.world.events)
@@ -482,15 +502,12 @@ def test_blink_repl_equivalent_to_mlog():
     )
 
 
-@pytest.mark.xfail(
-    reason="counter.fs equivalence blocked by same divergences as blink "
-           "(mforth-0qi Variable events + mforth-05h float-vs-int text). "
-           "Strict XFAIL.",
-    strict=True,
-)
 def test_counter_repl_equivalent_to_mlog():
-    """REPL events == mlog interpreter events for counter.fs. See
-    sibling xfail for the divergence rationale."""
+    """REPL events == mlog interpreter events for counter.fs.
+
+    mforth-2i1 (2026-05-23) flipped from strict-xfail to passing; see
+    `test_blink_repl_equivalent_to_mlog` for the fix lineage.
+    """
     runner = _run_example("counter", iterations=3)
     events_repl = list(runner.executor.world.events)
     events_mlog = _run_blink_or_counter_mlog("counter", iterations=3)

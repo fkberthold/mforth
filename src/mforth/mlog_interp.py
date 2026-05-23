@@ -333,6 +333,15 @@ class MlogInterpreter:
 
     world: MockWorld
     text: str = ""
+    # mforth-0qi (2026-05-23): names of mlog variables that came from
+    # Forth `VARIABLE` declarations. Reads/writes of these names are
+    # routed through `world.read_variable` / `world.write_variable` so
+    # the in-repo mlog interpreter emits the same `VariableReadEvent`
+    # / `VariableWriteEvent` stream the host REPL emits — restoring
+    # the REPL ↔ mlog equivalence property on every program touching a
+    # VARIABLE. Default empty set keeps pre-existing callers (golden
+    # tests, ad-hoc interpreter use) backward-compatible.
+    user_variables: set = field(default_factory=set)
     instructions: list = field(default_factory=list, init=False)
     variables: dict = field(default_factory=dict, init=False)
 
@@ -396,6 +405,14 @@ class MlogInterpreter:
         at the lex level — only the bare-identifier case triggers
         variable lookup. The quoted form returns the unquoted string
         directly.
+
+        mforth-0qi: when the bare identifier names a Forth user
+        variable (member of ``self.user_variables``), route the read
+        through ``world.read_variable`` so the interpreter emits a
+        ``VariableReadEvent`` matching the host REPL. The world's
+        coerced float return value is preferred over our local cache
+        so the event payload and the dispatcher both see the same
+        instrumented value.
         """
         # Quoted string literal — never a variable lookup.
         if len(token) >= 2 and token[0] == '"' and token[-1] == '"':
@@ -403,6 +420,21 @@ class MlogInterpreter:
         value = _parse_literal(token)
         if isinstance(value, str):
             # variable name (bare identifier or @-prefixed builtin)
+            if value in self.user_variables:
+                cached = self.variables.get(value)
+                # Non-numeric cache entries are block-name handles
+                # (Mode B getlink output) — bypass the instrumented
+                # path: world.read_variable coerces via float() and
+                # would crash on a string, and the REPL never emits
+                # VariableReadEvent for link-handle reads either.
+                if cached is not None and not isinstance(cached, (int, float)):
+                    return cached
+                if isinstance(cached, bool):
+                    return cached
+                # Route through the world surface so the read emits an
+                # event. world.read_variable defaults missing names to
+                # 0.0, matching the unbound fallback below.
+                return self.world.read_variable(value)
             if value in self.variables:
                 return self.variables[value]
             # mlog default: unbound name is null; coerce to 0 for
@@ -412,6 +444,27 @@ class MlogInterpreter:
         return value
 
     def _write(self, name: str, value: Any) -> None:
+        # mforth-0qi: route writes of names that came from Forth
+        # VARIABLE declarations through world.write_variable so the
+        # mlog interpreter emits VariableWriteEvent (matching the host
+        # REPL). Compiler-internal names (s<i> stack slots,
+        # __swap_tmp, @-prefixed magic vars) bypass instrumentation
+        # so the event stream stays focused on user-visible state.
+        #
+        # Non-numeric writes (block-name strings produced by the Mode B
+        # `getlink` prologue, or None from out-of-range getlink) bypass
+        # instrumentation: world.write_variable coerces via float() and
+        # would crash on a string, AND the REPL achieves the same
+        # binding via dictionary pre-seeding (without emitting an
+        # event), so going through write_variable here would add noise
+        # the REPL never produces.
+        if name in self.user_variables and isinstance(value, (int, float)) and not isinstance(value, bool):
+            self.world.write_variable(name, value)
+            # write_variable coerces to float; mirror the coerced value
+            # back into our local variables dict so subsequent _read
+            # paths see the same value the host REPL would.
+            self.variables[name] = float(value)
+            return
         self.variables[name] = value
 
     # ---- execution -----------------------------------------------------
