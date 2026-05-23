@@ -1,8 +1,9 @@
 """mforth language server — pygls stdio server + pure analyzers.
 
-Bead mforth-10t.23. The server reuses the same lex / parse / resolve /
-stackcheck pipeline as the compiler so the LSP and compiler agree on
-every diagnostic by construction.
+Beads mforth-10t.23 (diagnostics) + .24 (hover) + .25 (completion). The
+server reuses the same lex / parse / resolve / stackcheck pipeline as
+the compiler so the LSP and compiler agree on every diagnostic by
+construction.
 
 Architecture
 ============
@@ -71,6 +72,7 @@ from mforth.dictionary import (
     UnresolvedWordError,
     UserVariable,
     resolve,
+    standard_dictionary,
 )
 from mforth.lex import LexError
 from mforth.parse import (
@@ -414,6 +416,452 @@ def _format_user_var(entry: UserVariable) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Completion (bead mforth-10t.25)
+# ---------------------------------------------------------------------------
+#
+# `completions_for(text, *, uri, position)` is the third pure-function
+# seam alongside `analyze_document` and `hover_for`. The completion
+# handler registered on the server is a thin shim that pulls the
+# document text from the per-server URI→text cache (populated by
+# did_open/did_change) and calls this function.
+#
+# Completion sources (per the bead's acceptance):
+#
+#   1. Built-ins — all 32 entries from `standard_dictionary()`. Surfaced
+#      as `CompletionItemKind.Function` with the dictionary's stack
+#      effect in `detail` and the doc string in `documentation`.
+#   2. User-defined words — every `: name ... ;` declaration whose
+#      `src_loc` is BEFORE the cursor position. Forth's source-order
+#      rule: a word becomes callable only after its `;` closes.
+#      `CompletionItemKind.Function`.
+#   3. User variables — every `VARIABLE name` declaration whose name
+#      token position is BEFORE the cursor. `CompletionItemKind.Variable`.
+#   4. Sidecar link names — `[links.<name>]` entries in a sibling
+#      `<stem>.world.toml` file (looked up on disk via the URI's path).
+#      `CompletionItemKind.Constant`. Used as arguments to SENSOR /
+#      PRINTFLUSH / GETLINK.
+#
+# Source-order rule (HARD): for user definitions, the definition is
+# considered visible at positions STRICTLY AFTER the `;` that closes it.
+# In particular, `square` does NOT appear in completions inside its own
+# body — mforth v1 explicitly disallows recursion (bead .7), so the body
+# is the wrong place to surface it. Pragmatic implementation: parse the
+# program and, for each Definition, derive its closing `;` position by
+# inspecting the last term in the body's `src_loc` plus rendered length;
+# if a definition has no terms or src locations are unavailable, fall
+# back to the `:` opener's line and conservatively exclude it. The end
+# result: an interactive session sees `square` as soon as the cursor
+# leaves the `: square ... ;` definition.
+#
+# Variables: surfaced from the resolved dictionary's `UserVariable`
+# entries. Each `UserVariable.src_loc` points at the NAME token (see
+# `_collect_variable_declarations` in `mforth.dictionary`), so the
+# source-order check uses the name's loc directly.
+#
+# String / comment context detection: we walk the text from start of
+# document up to the cursor, tracking three states — IN_PAREN_COMMENT,
+# IN_LINE_COMMENT, IN_STRING (`."` or `S"`). If the cursor lands inside
+# any of those, return an empty completion list. The walk mirrors the
+# lexer's rules (a `(` only opens a comment when surrounded by whitespace,
+# a `."`/`S"` only opens a string when the same condition holds, a `\\`
+# starts a line comment under the same rule). Line comments end at the
+# next `\n`; paren comments end at the matching `)`; strings end at the
+# next `"`.
+#
+# Graceful degradation: if the document fails to parse, completion still
+# returns the built-ins + any sidecar links — completion is a TEACHING
+# surface and the user is, by definition, typing something incomplete.
+# Mirrors `.24`'s NON-fatal-stackcheck decision.
+
+
+_SIDECAR_LINK_DETAIL_PREFIX = "link:"
+
+
+def completions_for(
+    text: str, *, uri: str, position: lsp.Position
+) -> List[lsp.CompletionItem]:
+    """Return all completion candidates relevant to the cursor.
+
+    The returned list is the union of all sources (built-ins, user
+    words/variables in scope, sidecar link names). The LSP client
+    filters by the partial word under the cursor. If the cursor is
+    inside a string literal or comment, returns an empty list.
+    """
+    # Context filter: bail early inside strings/comments.
+    if _cursor_in_string_or_comment(text, position):
+        return []
+
+    items: List[lsp.CompletionItem] = []
+
+    # 1. Built-ins — always available, even when the document is broken.
+    builtins_dict = standard_dictionary()
+    for name_lc, entry in builtins_dict._entries.items():  # noqa: SLF001
+        if isinstance(entry, BuiltinWord):
+            items.append(_builtin_completion(entry))
+
+    # 2 + 3. User words + variables — only those declared before the cursor.
+    # Re-run lex/parse/resolve. parse failure → skip user-defined sources;
+    # we still get built-ins + sidecar links.
+    file = _file_from_uri(uri)
+    program = None
+    dictionary = None
+    try:
+        program = parse(text, file=file)
+    except (LexError, ParseError):
+        program = None
+
+    if program is not None:
+        try:
+            dictionary = resolve(program)
+        except UnresolvedWordError:
+            # An unresolved word doesn't prevent us from surfacing the
+            # in-scope definitions/variables; rebuild the dictionary
+            # by hand from the parsed program.
+            dictionary = None
+
+        in_scope_defs = _user_defs_in_scope(program, position)
+        in_scope_vars = _user_vars_in_scope(program, position)
+
+        for defn in in_scope_defs:
+            items.append(_user_def_completion(defn))
+        for var in in_scope_vars:
+            items.append(_user_var_completion(var))
+
+    # 4. Sidecar link names — load from the on-disk sibling `.world.toml`
+    # if present. Failures (file missing, TOML malformed, schema error)
+    # all degrade to "no link completions" rather than crashing.
+    for link_name, link_type in _sidecar_link_candidates(uri):
+        items.append(_sidecar_link_completion(link_name, link_type))
+
+    return items
+
+
+def _builtin_completion(entry: BuiltinWord) -> lsp.CompletionItem:
+    detail = _format_stack_effect(entry.stack_effect.in_arity, entry.stack_effect.out_arity)
+    return lsp.CompletionItem(
+        label=entry.name,
+        kind=lsp.CompletionItemKind.Function,
+        detail=detail,
+        documentation=lsp.MarkupContent(
+            kind=lsp.MarkupKind.PlainText,
+            value=entry.doc or "(no documentation)",
+        ),
+    )
+
+
+def _user_def_completion(defn: Definition) -> lsp.CompletionItem:
+    loc = defn.src_loc
+    return lsp.CompletionItem(
+        label=defn.name,
+        kind=lsp.CompletionItemKind.Function,
+        detail="( ? -- ? )",
+        documentation=lsp.MarkupContent(
+            kind=lsp.MarkupKind.PlainText,
+            value=f"defined at {loc.file}:{loc.line}:{loc.col}",
+        ),
+    )
+
+
+def _user_var_completion(var: UserVariable) -> lsp.CompletionItem:
+    loc = var.src_loc
+    return lsp.CompletionItem(
+        label=var.name,
+        kind=lsp.CompletionItemKind.Variable,
+        detail="( -- addr )",
+        documentation=lsp.MarkupContent(
+            kind=lsp.MarkupKind.PlainText,
+            value=f"variable defined at {loc.file}:{loc.line}:{loc.col}",
+        ),
+    )
+
+
+def _sidecar_link_completion(name: str, link_type: str) -> lsp.CompletionItem:
+    return lsp.CompletionItem(
+        label=name,
+        kind=lsp.CompletionItemKind.Constant,
+        detail=f"{_SIDECAR_LINK_DETAIL_PREFIX} {link_type}",
+        documentation=lsp.MarkupContent(
+            kind=lsp.MarkupKind.PlainText,
+            value=f"sidecar link '{name}' ({link_type})",
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Source-order scope helpers
+# ---------------------------------------------------------------------------
+
+
+def _position_strictly_before(
+    loc_line_1based: int,
+    loc_col_1based: int,
+    cursor: lsp.Position,
+) -> bool:
+    """True when (loc_line, loc_col) is strictly earlier than the cursor.
+
+    Both inputs are 1-based; cursor is 0-based LSP. Strict because a
+    declaration AT the cursor position is still being typed.
+    """
+    cursor_line_1based = cursor.line + 1
+    cursor_col_1based = cursor.character + 1
+    if loc_line_1based < cursor_line_1based:
+        return True
+    if loc_line_1based == cursor_line_1based and loc_col_1based < cursor_col_1based:
+        return True
+    return False
+
+
+def _definition_end_position(defn: Definition) -> tuple[int, int] | None:
+    """Best-effort: where does the `;` that closes this definition sit?
+
+    The parser records `src_loc` on the `:` opener but not on the `;`.
+    Approximate: use the last body term's location + rendered length as
+    an upper bound for the body end. The `;` is at-or-after that point.
+    Returns (line, col) 1-based, or None if no body terms are available.
+    """
+    if not defn.body:
+        return None
+    last = defn.body[-1]
+    extent = _term_extent(last)
+    if extent is None:
+        # Walk into the structural last term if needed
+        return (getattr(last, "src_loc", defn.src_loc).line, 0)
+    line, _start, end = extent
+    return (line, end)
+
+
+def _user_defs_in_scope(program: Program, cursor: lsp.Position) -> list[Definition]:
+    """Return user definitions whose `;` closes strictly before the cursor.
+
+    Source-order rule: `square` becomes completable only after `: square
+    ... ;` finishes. Crucially, this excludes the definition's own body
+    (which is correct — mforth v1 disallows recursion).
+    """
+    result: list[Definition] = []
+    for defn in program.definitions:
+        end = _definition_end_position(defn)
+        if end is None:
+            # No body — treat as visible after the `:` line (best-effort).
+            if _position_strictly_before(defn.src_loc.line, defn.src_loc.col, cursor):
+                result.append(defn)
+            continue
+        end_line, end_col = end
+        if _position_strictly_before(end_line, end_col, cursor):
+            result.append(defn)
+    return result
+
+
+def _user_vars_in_scope(program: Program, cursor: lsp.Position) -> list[UserVariable]:
+    """Return user variables whose name-token position is strictly before
+    the cursor. Walks the program directly rather than the dictionary so
+    the result tracks source order rather than the dictionary's
+    case-insensitive map order."""
+    # Reuse the dictionary's pre-scanner — it produces UserVariable entries
+    # with src_loc on the name token, exactly what we need.
+    from mforth.dictionary import _collect_variable_declarations
+
+    result: list[UserVariable] = []
+    for var in _collect_variable_declarations(program):
+        if _position_strictly_before(var.src_loc.line, var.src_loc.col, cursor):
+            result.append(var)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Sidecar lookup
+# ---------------------------------------------------------------------------
+
+
+def _sidecar_link_candidates(uri: str) -> list[tuple[str, str]]:
+    """Look up `<stem>.world.toml` next to the Forth file referenced by
+    `uri` and return ``[(link_name, link_type), ...]``.
+
+    Returns empty list when the URI isn't a `file://` URI, when the
+    sibling sidecar doesn't exist, or when parsing fails (malformed
+    TOML / schema violation). Failures degrade silently — completion
+    is a typing assistant, not a validator. Sidecar validation errors
+    surface through the separate `analyze_sidecar` diagnostics path.
+    """
+    import os
+    from urllib.parse import urlparse
+
+    parsed = urlparse(uri)
+    if parsed.scheme not in ("file", ""):
+        return []
+    fs_path = parsed.path or uri
+    if not fs_path:
+        return []
+    # Derive `<stem>.world.toml`: drop the final extension if any.
+    base, ext = os.path.splitext(fs_path)
+    if ext == ".toml":
+        # The cursor is already on a sidecar — completion of links from
+        # within a sidecar isn't a v1 use case.
+        return []
+    sidecar_path = base + ".world.toml"
+    if not os.path.isfile(sidecar_path):
+        return []
+    try:
+        with open(sidecar_path, "rb") as f:
+            data = tomllib.load(f)
+    except (OSError, tomllib.TOMLDecodeError):
+        return []
+    try:
+        world = parse_sidecar(data, source=sidecar_path)
+    except SidecarError:
+        return []
+    return [(link.mforth_name, link.type) for link in world.links]
+
+
+# ---------------------------------------------------------------------------
+# String / comment context detection
+# ---------------------------------------------------------------------------
+
+
+def _cursor_in_string_or_comment(text: str, position: lsp.Position) -> bool:
+    """Walk the document up to ``position`` and return True iff the
+    cursor falls inside a string literal or comment.
+
+    Mirrors the lexer's tokenizer state machine just enough to classify
+    the cursor location. Handles:
+
+    * ``\\ `` line comments — terminate at the next newline.
+    * ``( ... )`` paren comments — nestable, terminate at the matching
+      ``)``. The `(` opener must be a standalone token (surrounded by
+      whitespace) to count as a comment opener.
+    * ``."`` / ``S"`` string literals — terminate at the next ``"``.
+      Standalone-token rule applies to the opener.
+
+    The cursor is considered "inside" if a comment / string is open at
+    the cursor position OR closes exactly at the cursor position (the
+    cursor stays inside the lexeme until the closing character has been
+    crossed).
+    """
+    # Convert (line, character) to absolute char index.
+    target = _position_to_offset(text, position)
+
+    # State machine.
+    STATE_CODE = 0
+    STATE_LINE_COMMENT = 1
+    STATE_PAREN_COMMENT = 2  # depth carried separately
+    STATE_STRING = 3
+
+    state = STATE_CODE
+    paren_depth = 0
+    i = 0
+    n = len(text)
+
+    def is_ws_or_edge(idx: int) -> bool:
+        if idx < 0 or idx >= n:
+            return True
+        c = text[idx]
+        return c in " \t\n\r"
+
+    while i < target and i < n:
+        ch = text[i]
+
+        if state == STATE_LINE_COMMENT:
+            if ch == "\n":
+                state = STATE_CODE
+                i += 1
+            else:
+                i += 1
+            continue
+
+        if state == STATE_PAREN_COMMENT:
+            # Nest on standalone `(`, close on `)`. The lexer requires
+            # the `(` opener to be whitespace-surrounded but the closer
+            # is any `)`. We mirror that.
+            if ch == "(" and is_ws_or_edge(i - 1):
+                paren_depth += 1
+                i += 1
+            elif ch == ")":
+                paren_depth -= 1
+                i += 1
+                if paren_depth <= 0:
+                    state = STATE_CODE
+                    paren_depth = 0
+            else:
+                i += 1
+            continue
+
+        if state == STATE_STRING:
+            if ch == '"':
+                state = STATE_CODE
+                i += 1
+            else:
+                i += 1
+            continue
+
+        # STATE_CODE — look for openers.
+        # Line comment: `\` as a standalone token.
+        if ch == "\\" and is_ws_or_edge(i - 1) and is_ws_or_edge(i + 1):
+            state = STATE_LINE_COMMENT
+            i += 1
+            continue
+
+        # Paren comment: `(` as a standalone token.
+        if ch == "(" and is_ws_or_edge(i - 1) and is_ws_or_edge(i + 1):
+            state = STATE_PAREN_COMMENT
+            paren_depth = 1
+            i += 1
+            continue
+
+        # Dot-quote string: `."` as a standalone token (next-next is ws/edge).
+        if (
+            ch == "."
+            and i + 1 < n
+            and text[i + 1] == '"'
+            and is_ws_or_edge(i - 1)
+            and is_ws_or_edge(i + 2)
+        ):
+            state = STATE_STRING
+            i += 2
+            continue
+
+        # S-quote string: `S"` as a standalone token.
+        if (
+            ch == "S"
+            and i + 1 < n
+            and text[i + 1] == '"'
+            and is_ws_or_edge(i - 1)
+            and is_ws_or_edge(i + 2)
+        ):
+            state = STATE_STRING
+            i += 2
+            continue
+
+        i += 1
+
+    return state != STATE_CODE
+
+
+def _position_to_offset(text: str, position: lsp.Position) -> int:
+    """Convert an LSP (line, character) 0-based position to an absolute
+    character offset in `text`. Clamps past EOF to len(text)."""
+    line = position.line
+    character = position.character
+    if line < 0 or character < 0:
+        return 0
+    offset = 0
+    current_line = 0
+    while current_line < line and offset < len(text):
+        if text[offset] == "\n":
+            current_line += 1
+        offset += 1
+    # `offset` is now at the start of `line`. Advance by `character`,
+    # but stop at the next newline (a cursor past line-end still maps
+    # to before the newline).
+    end = offset + character
+    if end > len(text):
+        return len(text)
+    # If a newline falls within [offset, end), clamp to it.
+    nl = text.find("\n", offset, end)
+    if nl != -1:
+        return nl
+    return end
+
+
+# ---------------------------------------------------------------------------
 # pygls server factory
 # ---------------------------------------------------------------------------
 
@@ -483,6 +931,20 @@ def create_server() -> LanguageServer:
             return None
         return hover_for(text, uri=uri, position=params.position)
 
+    @server.feature(lsp.TEXT_DOCUMENT_COMPLETION)
+    def _on_completion(
+        ls: LanguageServer, params: lsp.CompletionParams
+    ) -> lsp.CompletionList | None:
+        uri = params.text_document.uri
+        # Sidecar TOML documents don't get completion in v1.
+        if uri.endswith(SIDECAR_SUFFIX):
+            return None
+        text = document_cache.get(uri)
+        if text is None:
+            return None
+        items = completions_for(text, uri=uri, position=params.position)
+        return lsp.CompletionList(is_incomplete=False, items=items)
+
     return server
 
 
@@ -537,6 +999,7 @@ __all__ = [
     "SIDECAR_SUFFIX",
     "analyze_document",
     "analyze_sidecar",
+    "completions_for",
     "create_server",
     "hover_for",
     "serve_stdio",
