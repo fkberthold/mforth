@@ -11,12 +11,51 @@ authors = [{ name = "Frank Berthold" }]
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mforth"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+# tests/unit exists today; the other three are placeholders for future beads
+# (mforth-10t.29 integration, mforth-10t.30 golden mlog, mforth-10t.32 e2e).
+# Listed up front so adding them later is a no-op for pytest discovery.
+testpaths = [
+    "tests/unit",
+    "tests/integration",
+    "tests/golden",
+    "tests/e2e",
+]
 pythonpath = ["src"]
+# Coverage flags live on the dedicated `pytest --cov` invocation (used in CI
+# and documented in CLAUDE.md), not in addopts. Rationale: a bare `pytest -q`
+# stays fast for the inner-loop TDD cycle; coverage runs are explicit.
 addopts = "-q"
+
+[tool.coverage.run]
+branch = true
+# Scope is intentionally the compiler core only: lex + parse + dictionary +
+# stackcheck. Backends (host, mlog) are covered by equivalence fixtures in
+# later beads, not by this gate.
+source = [
+    "mforth.lex",
+    "mforth.parse",
+    "mforth.dictionary",
+    "mforth.stackcheck",
+]
+
+[tool.coverage.report]
+# Gate lives in config so a bare `pytest --cov` (or `coverage report`) fails
+# below threshold without anyone having to remember the flag.
+fail_under = 85
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]

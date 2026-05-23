@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref (e.g. PR force-push) to save minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: pytest (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      # Don't kill the 3.12 job just because 3.11 reported first; we want
+      # to see both versions' failures on one run.
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          # Built-in pip caching keyed on pyproject.toml — cheap and avoids
+          # re-downloading pytest/coverage on every run.
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install package + dev extras
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Run unit tests (fast feedback)
+        run: pytest -q
+
+      - name: Run unit tests with coverage gate (>=85% on compiler core)
+        # `fail_under = 85` lives in pyproject.toml [tool.coverage.report], so
+        # --cov alone is enough to enforce the gate. --cov-fail-under is
+        # passed redundantly here so a CI log reader sees the threshold
+        # without having to open pyproject.toml.
+        run: pytest --cov --cov-report=term-missing --cov-fail-under=85
