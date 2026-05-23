@@ -116,7 +116,7 @@ bd close <id>         # Complete work
 - If push fails, resolve and retry until it succeeds
 <!-- END BEADS INTEGRATION -->
 
-> **Note on the push step:** mforth has no git remote yet. `bd dolt push` and `git push` are no-ops until a remote is configured. The mandatory-push workflow above is the bd-init default and stays as-is so that adding a remote later is a one-line change rather than a CLAUDE.md edit.
+> **Note on the push step:** `origin` is `github.com:fkberthold/mforth` (SSH, public) as of 2026-05-23. `git push` is real and required for session close. `bd dolt push` remains a no-op until a dolt-sync remote is configured separately.
 
 ## Build & Test
 
