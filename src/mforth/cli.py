@@ -196,6 +196,7 @@ def _load_subcommands() -> None:
     #   from mforth import compile as _compile_mod  # noqa: F401
     #   ... etc.
     from mforth.lsp import cli_subcommand as _lsp_cli  # noqa: F401  -- side-effect import
+    from mforth.repl import cli_subcommand as _repl_cli  # noqa: F401  -- side-effect import
 
 
 # --------------------------------------------------------------------------
