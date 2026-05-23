@@ -86,7 +86,9 @@ class StackcheckResult:
 
 
 def stackcheck(
-    program: Program, dictionary: Dictionary | None = None
+    program: Program,
+    dictionary: Dictionary | None = None,
+    initial_depth: int = 0,
 ) -> StackcheckResult:
     """Run the stack-checker over `program`.
 
@@ -94,6 +96,13 @@ def stackcheck(
     resolver is run on the program first (registering user definitions and
     VARIABLE-declared names). Otherwise the caller is expected to have run
     resolution already.
+
+    `initial_depth` seeds the simulated main-body depth. Defaults to 0 for
+    AOT / single-shot compilation. The interactive REPL (bead mforth-10t.13)
+    passes the current data-stack depth so a line like `+ .` correctly
+    type-checks against values pushed by an earlier line. Underflow is
+    measured against 0, NOT against `initial_depth` — a line that consumes
+    more than the live stack contains is still a stack error.
 
     Returns a `StackcheckResult` carrying the user-def effects and per-term
     incoming-depth annotations.
@@ -267,8 +276,13 @@ def stackcheck(
     for defn in program.definitions:
         compute_def_effect(defn)
 
-    # Check main body — main starts at depth 0; underflow is an error.
-    main_final, main_min, main_min_loc = simulate(program.main, initial_depth=0)
+    # Check main body — main starts at `initial_depth` (0 for AOT, REPL's
+    # current data-stack depth for interactive lines). Underflow is measured
+    # against absolute zero, NOT against `initial_depth`: a REPL line that
+    # consumes more than the live stack contains is still an underflow.
+    main_final, main_min, main_min_loc = simulate(
+        program.main, initial_depth=initial_depth
+    )
     if main_min < 0:
         raise StackError(
             f"stack underflow in main (depth went to {main_min})",
