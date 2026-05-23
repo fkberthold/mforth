@@ -276,6 +276,37 @@ def test_cli_run_blink_example_advances_tick():
     assert rc == 0, f"stderr={err!r}"
 
 
+def test_cli_run_counter_example_runs_clean():
+    """The bundled examples/counter.fs runs end-to-end under --no-loop. Pins
+    that the second v1 demo (pure VARIABLE/@/!/. with no Mindustry blocks)
+    is reachable via `mforth run`.
+
+    Per bead mforth-10t.32: examples/counter.fs is the minimal pedagogical
+    artifact demonstrating user variables + fetch/store + arithmetic +
+    `.` (print top of stack) — no display, no PRINTFLUSH, no WAIT.
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    counter = repo_root / "examples" / "counter.fs"
+    assert counter.exists(), "examples/counter.fs is part of the v1 ship"
+
+    rc, out, err = _run_cli(["run", str(counter), "--no-loop"])
+    assert rc == 0, f"stderr={err!r}"
+
+
+def test_cli_run_counter_sidecar_exists_and_parses():
+    """examples/counter.world.toml exists and is a valid sidecar (parses
+    cleanly via `mforth.backend.sidecar.load_sidecar`). Pins the
+    paired-sidecar convention for every example in v1."""
+    from mforth.backend.sidecar import load_sidecar
+
+    repo_root = Path(__file__).resolve().parents[2]
+    sidecar = repo_root / "examples" / "counter.world.toml"
+    assert sidecar.exists(), "examples/counter.world.toml is part of the v1 ship"
+
+    cfg = load_sidecar(sidecar)
+    assert cfg is not None
+
+
 # --------------------------------------------------------------------------
 # Auto-loop + interrupt — CLI level
 # --------------------------------------------------------------------------

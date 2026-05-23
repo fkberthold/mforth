@@ -182,3 +182,59 @@ def test_compile_emit_comments_flag_does_not_break_output(tmp_path):
     assert rc == 0
     text = output.read_text()
     assert text.startswith("#")  # header still present
+
+
+# --------------------------------------------------------------------------
+# Example fixtures (bead mforth-10t.32) — pinned for the v1 demo.
+# --------------------------------------------------------------------------
+
+EXAMPLES_DIR = Path(__file__).resolve().parent.parent.parent / "examples"
+
+
+def test_compile_blink_example_under_instruction_budget(tmp_path):
+    """examples/blink.fs compiles cleanly and lands well under the
+    community-lore 1000-instruction-per-processor cap (per CLAUDE.md
+    `mforth-v1-demo` bd-memory).
+
+    Pins: the v1 demo target is paste-ready into a real Mindustry
+    logic processor without hitting the size ceiling.
+    """
+    output = tmp_path / "blink.mlog"
+    rc = mforth.cli.main([
+        "compile",
+        str(EXAMPLES_DIR / "blink.fs"),
+        "-o",
+        str(output),
+    ])
+    assert rc == 0
+    text = output.read_text()
+    # Header carries the self-monitor instruction count.
+    assert text.startswith("#")
+    assert "instructions" in text.splitlines()[0]
+    # Body line count is far under the 1000-instr lore cap.
+    body = [ln for ln in text.splitlines() if ln and not ln.startswith("#")]
+    assert len(body) < 100, f"blink should be tiny, got {len(body)} instrs"
+    # Sidecar substitution did its job — `display` should be replaced
+    # with the in-game name from the sidecar (not appear in any printflush).
+    for ln in body:
+        if ln.startswith("printflush"):
+            assert "display" not in ln, ln
+
+
+def test_compile_counter_example_under_instruction_budget(tmp_path):
+    """examples/counter.fs compiles cleanly and is even smaller than
+    blink (no Mindustry primitives, just VARIABLE + arithmetic + `.`).
+    Pins the second v1 demo's reachability via `mforth compile`."""
+    output = tmp_path / "counter.mlog"
+    rc = mforth.cli.main([
+        "compile",
+        str(EXAMPLES_DIR / "counter.fs"),
+        "-o",
+        str(output),
+    ])
+    assert rc == 0
+    text = output.read_text()
+    assert text.startswith("#")
+    assert "instructions" in text.splitlines()[0]
+    body = [ln for ln in text.splitlines() if ln and not ln.startswith("#")]
+    assert len(body) < 100, f"counter should be tiny, got {len(body)} instrs"

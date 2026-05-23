@@ -1,0 +1,20 @@
+# Sidecar for counter.fs — the minimal v1 demo.
+#
+# counter.fs prints an incrementing variable to a message block once per
+# auto-loop tick (no explicit WAIT pacing; the processor's @ipt-derived
+# loop frequency provides the implicit cadence). The `display` link is
+# the only block reference in the source.
+#
+# Per the CLAUDE.md sidecar rule: tutorials use `target` (Mode A) — the
+# stable mforth-name `display` (left of `=` in the section header) is
+# what the .fs source references; `target = "message1"` is what shows up
+# in the in-game block label. Re-link order doesn't matter; the engine
+# looks up the block by name.
+
+[links.display]
+type   = "message"
+target = "message1"
+
+[clock]
+ipt      = 8      # logic processor (default; micro=2, hyper=25)
+realtime = false  # tests advance `wait` instantly
