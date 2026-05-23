@@ -1,0 +1,8 @@
+# Mode B: index binding — exercises the getlink prologue in compiled mlog.
+[links.display]
+type = "message"
+index = 0
+
+[clock]
+ipt = 8
+realtime = false

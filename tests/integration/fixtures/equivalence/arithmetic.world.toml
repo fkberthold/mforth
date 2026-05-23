@@ -1,0 +1,8 @@
+# Mode A sidecar — single message block bound by mforth name "display".
+[links.display]
+type   = "message"
+target = "message1"
+
+[clock]
+ipt      = 8
+realtime = false
