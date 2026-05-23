@@ -24,11 +24,22 @@ In:
   ``set <name> s<value-slot>``.
 * User-defined word call sites — inlined.  v1 strategy.
 
+Also in (bead .17): control flow — `IfThen`, `Begin(kind="until")`,
+`Begin(kind="while-repeat")`, `DoLoop`.  See the .17 ship drawer for
+the label-encoding contract.
+
+Also in (bead .18): Mindustry primitives — `PRINT`, `PRINTFLUSH`,
+`WAIT`, `SENSOR`, `GETLINK`.  See `_try_lift_mindustry_primitive` and
+`_emit_mindustry_slot_form` for the literal-lifting vs slot-reference
+forms.  The lifting pass is the .19 handoff: it produces the bead-
+spec's literal operand forms when the value is known at compile time,
+and falls back to slot references for runtime-valued operands (which
+.19 will substitute against the sidecar where applicable).
+
 Out (raise `NotImplementedError`):
 
-* Control flow (`IfThen`, `Begin`, `DoLoop`) — bead .17.
-* Mindustry primitives (`PRINT`, `PRINTFLUSH`, `WAIT`, `SENSOR`,
-  `GETLINK`) and the IO word `.` — a later bead.
+* The IO printing word `.` (``( n -- )``) — still deferred; the host
+  REPL has it, mlog needs a target buffer + printflush sequence.
 * Loose variable addresses on the stack (e.g. ``foo DUP @``) — v1 is
   cell-free and has no addressable-value semantics.  Error here so the
   user sees a clear message rather than malformed mlog.
@@ -168,16 +179,37 @@ _BINARY_OP_MAP: dict[str, str] = {
 }
 
 
-# Mindustry primitives — recognised but deferred to a later bead.  We
-# enumerate them here so the error message names the user's word
-# accurately, and so the catch-all NotImplementedError doesn't swallow
-# typos that should have been resolver errors.
+# Mindustry primitives still deferred to a later bead.  Bead .18 shipped
+# the five v1 Mindustry primitives (PRINT, PRINTFLUSH, WAIT, SENSOR,
+# GETLINK); only the generic IO printing word `.` remains deferred (the
+# host REPL has it; mlog needs a target buffer + printflush sequence
+# that v1 does not yet codegen).  We enumerate the deferred set so the
+# error message names the user's word accurately and so the catch-all
+# NotImplementedError doesn't swallow typos that should have been
+# resolver errors.
 _DEFERRED_MINDUSTRY: frozenset[str] = frozenset({
-    "PRINT", "PRINTFLUSH", "WAIT", "SENSOR", "GETLINK",
-    # IO printing of a stack value — also deferred (host REPL has it,
-    # mlog needs a target buffer + printflush sequence).
     ".",
 })
+
+
+# Mindustry primitives implemented by bead .18.  See `_emit_mindustry`
+# and the literal-lifting handling in `_emit_body`.  The dictionary
+# tags these `"mindustry"`; we enumerate them explicitly for dispatch
+# so a new mindustry word added to the dictionary fails loudly instead
+# of being silently treated as a "WordCall with no emit handler".
+_MINDUSTRY_PRIMITIVES: frozenset[str] = frozenset({
+    "PRINT", "PRINTFLUSH", "WAIT", "SENSOR", "GETLINK",
+})
+
+
+# Primitives whose operand positions accept a *bare* mlog identifier
+# (no quotes) when a LitStr immediately precedes them at compile time.
+# The lifting pass strips outer quotes for these positions.  Cross-ref
+# the mlog reference drawer: `printflush` takes a block handle (bare
+# identifier in mlog source); `sensor` takes a block and a property
+# (both bare).  PRINT, in contrast, accepts any value — including a
+# quoted string literal — so its lifted operand keeps the quotes.
+_STRIP_QUOTES_ON_LIFT: frozenset[str] = frozenset({"PRINTFLUSH", "SENSOR"})
 
 
 # The single scratch variable used by SWAP/ROT/TUCK.  See module
@@ -390,10 +422,30 @@ class _Emitter:
         cannot represent (no addressable cells).  The ``pending_var``
         check below catches those at emit time with a clear error
         message rather than producing malformed mlog.
+
+        Mindustry-primitive literal lifting (bead .18) runs here as an
+        index-based lookahead: when a ``LitStr`` / ``LitInt`` immediately
+        precedes a lifting-eligible primitive (PRINT, PRINTFLUSH, SENSOR),
+        the literal's value is folded into the primitive's operand and
+        the otherwise-required ``set s<i> <value>`` is elided.  WAIT and
+        GETLINK never lift — their operands are intrinsically runtime
+        values.  See ``_try_lift_mindustry_primitive`` for the matcher.
         """
         pending_var: Optional[str] = None
-        for term in body:
+        i = 0
+        while i < len(body):
+            consumed = self._try_lift_mindustry_primitive(
+                out, body, i, slot_rewrite, pending_var
+            )
+            if consumed > 0:
+                # A lifting pattern matched; advance past all consumed
+                # terms.  pending_var stays None — the patterns never
+                # start with a UserVariable WordCall.
+                i += consumed
+                continue
+            term = body[i]
             pending_var = self._emit_term(out, term, slot_rewrite, pending_var)
+            i += 1
         if pending_var is not None:
             raise NotImplementedError(
                 f"VARIABLE address '{pending_var}' left on the stack — v1 mforth "
@@ -500,13 +552,28 @@ class _Emitter:
             self._guard_no_pending(pending_var, term)
             return None
 
-        # Mindustry primitives — deferred.
+        # Mindustry primitives still deferred (currently just `.`).
         if isinstance(entry, BuiltinWord) and entry.name in _DEFERRED_MINDUSTRY:
             self._guard_no_pending(pending_var, term)
             raise NotImplementedError(
                 f"Mindustry primitive '{entry.name}' is not yet supported by "
-                f"the mlog emitter — see bead mforth-10t.16 OUT OF SCOPE"
+                f"the mlog emitter — see bead mforth-10t.18 OUT OF SCOPE"
             )
+
+        # Mindustry primitives implemented by .18 — slot-reference path
+        # (the literal-lifting fast path is handled by
+        # `_try_lift_mindustry_primitive` in `_emit_body` BEFORE we get
+        # here).  Reaching this arm means the primitive consumed a
+        # runtime value (computed result, fetched VARIABLE, etc.) — the
+        # bead .19 sidecar-substitution pass will need to trace such
+        # operands back to their literal sources if final-output bare
+        # names are required.
+        if isinstance(entry, BuiltinWord) and entry.name in _MINDUSTRY_PRIMITIVES:
+            self._guard_no_pending(pending_var, term)
+            self._emit_mindustry_slot_form(
+                out, entry.name, self._rw(term, slot_rewrite)
+            )
+            return None
 
         # Builtin binary op.
         if isinstance(entry, BuiltinWord) and entry.name in _BINARY_OP_MAP:
@@ -624,6 +691,192 @@ class _Emitter:
             return
 
         raise NotImplementedError(f"stack op '{name}' has no emit handler")
+
+    # ---- Mindustry primitive emission (bead .18) -----------------------
+
+    def _try_lift_mindustry_primitive(
+        self,
+        out: list,
+        body: list,
+        i: int,
+        slot_rewrite,
+        pending_var: Optional[str],
+    ) -> int:
+        """If `body[i:]` starts a lifting pattern, emit the fused form
+        and return the number of terms consumed; otherwise return 0.
+
+        Lifting patterns (bead .18 — see module docstring + test_emit_
+        mindustry.py for the contract):
+
+        * ``LitInt|LitStr  +  PRINT``        → ``print <value>``     (2 terms)
+        * ``LitInt|LitStr  +  PRINTFLUSH``   → ``printflush <value>`` (2 terms,
+          quotes stripped — block handles are bare identifiers in mlog)
+        * ``X  +  LitInt|LitStr  +  SENSOR`` → ``sensor <write> <X-or-slot> <prop>``
+          where ``X`` is either ANOTHER literal (then both lift) or a
+          term that has already emitted normally and left its result in
+          the block slot.  The prop literal always lifts when present.
+
+        The lifting elides the ``set s<i> <value>`` that the literal
+        would otherwise emit on its own.  Slot allocation is unaffected
+        — the slot allocator still records the literal's slot, but the
+        emitter just doesn't write to it.  Downstream instructions
+        don't reference the elided slot (the only consumer was the
+        primitive, which now has the value inline).
+
+        WAIT and GETLINK do NOT lift — their operands are intrinsically
+        runtime values (seconds counts, link indices) and the bead's
+        stated emission for both uses slot references.
+
+        The function does not consume `pending_var` paths — a lifting
+        pattern starts with a LitInt/LitStr or another primitive's
+        output, never with a UserVariable WordCall.  If `pending_var`
+        is set when called, return 0 and let `_emit_term` raise the
+        helpful "address-on-stack" error.
+        """
+        if pending_var is not None:
+            return 0
+
+        # Helper: does `term` at `body[k]` resolve to a Mindustry
+        # primitive named `name`?
+        def is_primitive(k: int, name: str) -> bool:
+            if k >= len(body):
+                return False
+            t = body[k]
+            if not isinstance(t, WordCall):
+                return False
+            entry = self.dictionary.lookup(t.name)
+            return (
+                isinstance(entry, BuiltinWord)
+                and entry.name == name
+            )
+
+        # SENSOR: 3-term `LitStr LitStr SENSOR` (both lift) — check this
+        # first so the 2-term PRINT/PRINTFLUSH match doesn't preempt it.
+        if (
+            i + 2 < len(body)
+            and isinstance(body[i], LitStr)
+            and isinstance(body[i + 1], LitStr)
+            and is_primitive(i + 2, "SENSOR")
+        ):
+            block_value = body[i].value
+            prop_value = body[i + 1].value
+            sensor = body[i + 2]
+            rw = self._rw(sensor, slot_rewrite)
+            self._emit(out, "sensor", (rw.writes[0], block_value, prop_value))
+            return 3
+
+        # SENSOR: 2-term tail `(any) LitStr SENSOR` — only prop lifts.
+        # The (any) term emits normally (handled by the outer loop
+        # before we reach the SENSOR), THEN this matcher fires on a
+        # 2-term window `LitStr + SENSOR`.  Block becomes the slot
+        # reference at reads[0] (which is the slot the previous term
+        # wrote into).
+        if (
+            i + 1 < len(body)
+            and isinstance(body[i], LitStr)
+            and is_primitive(i + 1, "SENSOR")
+        ):
+            prop_value = body[i].value
+            sensor = body[i + 1]
+            rw = self._rw(sensor, slot_rewrite)
+            # reads = (block_slot, prop_slot); we substitute the lifted
+            # bare prop for the prop_slot position.
+            self._emit(
+                out, "sensor", (rw.writes[0], rw.reads[0], prop_value)
+            )
+            return 2
+
+        # PRINT: 2-term `LitInt|LitStr PRINT` → `print <value>` (quotes
+        # preserved on LitStr because mlog `print` accepts strings).
+        if (
+            i + 1 < len(body)
+            and isinstance(body[i], (LitStr, LitInt))
+            and is_primitive(i + 1, "PRINT")
+        ):
+            lit = body[i]
+            if isinstance(lit, LitStr):
+                operand = f'"{lit.value}"'
+            else:
+                operand = str(lit.value)
+            self._emit(out, "print", (operand,))
+            return 2
+
+        # PRINTFLUSH: 2-term `LitStr PRINTFLUSH` → `printflush <name>`
+        # (quotes stripped — mlog block handles are bare identifiers).
+        # We do NOT lift LitInt → PRINTFLUSH because a numeric block
+        # handle doesn't make sense in mlog; the slot-form fallback
+        # would catch it as `printflush s<i>` which is also nonsense
+        # but at least leaves room for .19 to flag the misuse.
+        if (
+            i + 1 < len(body)
+            and isinstance(body[i], LitStr)
+            and is_primitive(i + 1, "PRINTFLUSH")
+        ):
+            name = body[i].value
+            self._emit(out, "printflush", (name,))
+            return 2
+
+        return 0
+
+    def _emit_mindustry_slot_form(self, out: list, name: str, rw) -> None:
+        """Emit the slot-reference form for a Mindustry primitive whose
+        operands were not lifted at the body-walker layer.
+
+        Per the bead .18 spec mappings:
+
+        * ``PRINT``     → ``print s<i-1>``
+        * ``PRINTFLUSH``→ ``printflush s<i-1>``
+        * ``WAIT``      → ``wait s<i-1>``
+        * ``SENSOR``    → ``sensor s<i-2> s<i-2> s<i-1>`` (write into the
+          block-slot per the (2, 1) effect; bead .19 substitutes a bare
+          name for the second occurrence if a sidecar reference was the
+          source)
+        * ``GETLINK``   → ``getlink s<i-1> s<i-1>`` (link-index slot is
+          reused as the output handle slot, matching the slot
+          allocator's (1, 1) same-slot pattern used by NOT)
+
+        Reaching this method means the operands were computed (came
+        from arithmetic, a fetched VARIABLE, an earlier primitive's
+        output, etc.) — the .19 sidecar-substitution pass owns any
+        further rewriting that final-output bare names require.
+        """
+        reads = rw.reads
+        writes = rw.writes
+
+        if name == "PRINT":
+            # ( str -- ): one read, zero writes.
+            self._emit(out, "print", (reads[0],))
+            return
+
+        if name == "PRINTFLUSH":
+            # ( block -- ): one read, zero writes.
+            self._emit(out, "printflush", (reads[0],))
+            return
+
+        if name == "WAIT":
+            # ( seconds -- ): one read, zero writes.
+            self._emit(out, "wait", (reads[0],))
+            return
+
+        if name == "SENSOR":
+            # ( block prop -- value ): reads = (block, prop), writes =
+            # (value,).  mlog `sensor <result> <block> <property>` —
+            # result is allowed to alias the block slot because mlog
+            # reads operands before writing the result within an
+            # instruction.
+            self._emit(out, "sensor", (writes[0], reads[0], reads[1]))
+            return
+
+        if name == "GETLINK":
+            # ( i -- block ): reads = (i,), writes = (block,) — slot
+            # allocator gives same slot for both (the (1, 1) same-slot
+            # pattern).  mlog `getlink <result> <i>`.
+            self._emit(out, "getlink", (writes[0], reads[0]))
+            return
+
+        raise NotImplementedError(
+            f"Mindustry primitive '{name}' has no slot-form emit handler"
+        )
 
     # ---- user-def inlining ---------------------------------------------
 

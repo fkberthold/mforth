@@ -197,6 +197,11 @@ def _load_subcommands() -> None:
     #   ... etc.
     from mforth.lsp import cli_subcommand as _lsp_cli  # noqa: F401  -- side-effect import
     from mforth.repl import cli_subcommand as _repl_cli  # noqa: F401  -- side-effect import
+    # Bead .14 — `run` registers via an explicit callable so a registry
+    # clear + replay (test-isolation pattern) re-registers cleanly even
+    # when the module is already cached in sys.modules.
+    from mforth import cli_run as _run_cli  # noqa: F401  -- side-effect import (bead .14)
+    _run_cli.register()
 
 
 # --------------------------------------------------------------------------
