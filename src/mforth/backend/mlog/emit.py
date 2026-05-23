@@ -199,7 +199,25 @@ _DEFERRED_MINDUSTRY: frozenset[str] = frozenset({
 # of being silently treated as a "WordCall with no emit handler".
 _MINDUSTRY_PRIMITIVES: frozenset[str] = frozenset({
     "PRINT", "PRINTFLUSH", "WAIT", "SENSOR", "GETLINK",
+    # CONTROL block-instructions (bead mforth-cto).
+    "CONTROL-ENABLED", "CONTROL-CONFIG", "CONTROL-SHOOT",
+    "CONTROL-SHOOTP", "CONTROL-COLOR",
 })
+
+
+# CONTROL-* word → (mlog sub-command, total operand count after the
+# sub-command). mlog's `control` instruction is always 5 operands after
+# the sub-command; unused tail slots are padded with "0" in the emit.
+# `block_arity` is how many operands come from the data stack (block +
+# extras); `pad` is how many zero-padding operands follow.
+_CONTROL_SHAPES: dict[str, tuple[str, int]] = {
+    # name: (sub, total_stack_ops)
+    "CONTROL-ENABLED": ("enabled", 2),  # block + flag, then 3 zeros
+    "CONTROL-CONFIG":  ("config",  2),  # block + value, then 3 zeros
+    "CONTROL-SHOOT":   ("shoot",   4),  # block + x + y + shoot, no pad
+    "CONTROL-SHOOTP":  ("shootp",  3),  # block + unit + shoot, 1 zero
+    "CONTROL-COLOR":   ("color",   4),  # block + r + g + b, no pad
+}
 
 
 # Bead mforth-eaz: every BuiltinWord whose tag is in this set AND whose
@@ -999,6 +1017,59 @@ class _Emitter:
             self._emit(out, "print", (atname,))
             return 2
 
+        # CONTROL-ENABLED / CONTROL-CONFIG lifting (bead mforth-cto).
+        # The two most common USR-script patterns:
+        #   cv1 1 CONTROL-ENABLED       → control enabled cv1 1 0 0 0
+        #   sorter1 @copper CONTROL-CONFIG → control config sorter1 @copper 0 0 0
+        #   sorter1 S" @lead" CONTROL-CONFIG → control config sorter1 @lead 0 0 0
+        # Block source: link-uservar (most common), LitStr (occasional), or
+        # @-identifier (rare). Value source: LitInt (enabled flag), LitStr
+        # or @-identifier (config target).
+        def lift_control_block_value(sub_name: str, target: str) -> int:
+            """Try to lift `<block> <value> <CONTROL-target>` patterns.
+
+            Returns 3 if a lift fired, 0 otherwise. `sub_name` is the
+            mlog sub-command ("enabled", "config"); `target` is the
+            Forth word name we expect at body[i+2].
+            """
+            if i + 2 >= len(body):
+                return 0
+            if not is_primitive(i + 2, target):
+                return 0
+            # Block operand resolution.
+            block_op: Optional[str] = None
+            if (uvname := is_uservar(i)) is not None:
+                block_op = uvname
+            elif (atblock := is_at_identifier(i)) is not None:
+                block_op = atblock
+            elif isinstance(body[i], LitStr):
+                block_op = body[i].value
+            if block_op is None:
+                return 0
+            # Value operand resolution.
+            value_op: Optional[str] = None
+            if isinstance(body[i + 1], LitInt):
+                value_op = str(body[i + 1].value)
+            elif isinstance(body[i + 1], LitStr):
+                value_op = body[i + 1].value
+            elif (atval := is_at_identifier(i + 1)) is not None:
+                value_op = atval
+            if value_op is None:
+                return 0
+            self._emit(
+                out,
+                "control",
+                (sub_name, block_op, value_op, "0", "0", "0"),
+            )
+            return 3
+
+        consumed = lift_control_block_value("enabled", "CONTROL-ENABLED")
+        if consumed:
+            return consumed
+        consumed = lift_control_block_value("config", "CONTROL-CONFIG")
+        if consumed:
+            return consumed
+
         return 0
 
     def _emit_mindustry_slot_form(self, out: list, name: str, rw) -> None:
@@ -1055,6 +1126,19 @@ class _Emitter:
             # allocator gives same slot for both (the (1, 1) same-slot
             # pattern).  mlog `getlink <result> <i>`.
             self._emit(out, "getlink", (writes[0], reads[0]))
+            return
+
+        # CONTROL-* (bead mforth-cto). Slot-form fallback for the five
+        # block-control sub-commands. The first read is the block; the
+        # remaining reads are the sub-command's extra operands in stack
+        # order. mlog's `control` always takes 5 operands after the
+        # sub-command, so we pad trailing positions with "0".
+        if name in _CONTROL_SHAPES:
+            sub, _total = _CONTROL_SHAPES[name]
+            ops = [sub, *reads]
+            while len(ops) < 6:  # sub + 5 operands total
+                ops.append("0")
+            self._emit(out, "control", tuple(ops))
             return
 
         raise NotImplementedError(

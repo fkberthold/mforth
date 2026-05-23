@@ -180,6 +180,40 @@ _BUILTINS: list[BuiltinWord] = [
         "retrieve i-th linked block: ( i -- block )",
         "mindustry",
     ),
+    # CONTROL block-instructions (bead mforth-cto). Per-sub-command words
+    # so each has a static stack effect — see drawer
+    # `drawer_mforth_findings_743016c030479990ba93e3e3` for the v1-scope
+    # correction (UCONTROL stays v2; CONTROL is v1 block-side only).
+    BuiltinWord(
+        "CONTROL-ENABLED",
+        StackEffect(2, 0),
+        "enable/disable a block: ( block flag -- )",
+        "mindustry-control",
+    ),
+    BuiltinWord(
+        "CONTROL-CONFIG",
+        StackEffect(2, 0),
+        "configure a block (e.g. sorter target): ( block value -- )",
+        "mindustry-control",
+    ),
+    BuiltinWord(
+        "CONTROL-SHOOT",
+        StackEffect(4, 0),
+        "aim+fire a turret at coordinate: ( block x y shoot -- )",
+        "mindustry-control",
+    ),
+    BuiltinWord(
+        "CONTROL-SHOOTP",
+        StackEffect(3, 0),
+        "aim+fire a turret at a unit: ( block unit shoot -- )",
+        "mindustry-control",
+    ),
+    BuiltinWord(
+        "CONTROL-COLOR",
+        StackEffect(4, 0),
+        "set illuminator color: ( block r g b -- )",
+        "mindustry-control",
+    ),
     # DO/LOOP counters. Valid only inside a DO/LOOP body, but the dictionary
     # treats them as plain (0, 1) pushes for resolution + stack arithmetic.
     BuiltinWord("I", StackEffect(0, 1), "push current DO/LOOP counter", "control"),

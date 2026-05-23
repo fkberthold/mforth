@@ -73,6 +73,24 @@ class VariableWriteEvent(Event):
     value: float
 
 
+@dataclass(frozen=True)
+class ControlEvent(Event):
+    """Block-side `control` instruction (bead mforth-cto).
+
+    `op` is the sub-command name (`"enabled"`, `"config"`, `"shoot"`,
+    `"shootp"`, `"color"`). `block_name` is the bare mforth-name of the
+    target block. `args` is a tuple of remaining operands captured
+    verbatim from the data-stack pop / mlog operand list. Per the .12
+    block-handle convention, missing-block invocations still emit the
+    event so subscribers (web viz, integration tests) can count
+    attempts — the state mutation is the only thing that gets skipped.
+    """
+
+    op: str
+    block_name: str
+    args: tuple
+
+
 # ---------------------------------------------------------------------------
 # EventStream
 # ---------------------------------------------------------------------------
@@ -225,6 +243,30 @@ class MockWorld:
         self.events.emit(LinkResolvedEvent, index=i, block_name=name)
         return name
 
+    def control(self, op: str, block_name: str, *args) -> None:
+        """Block-side `control` dispatch (bead mforth-cto).
+
+        Always emits :class:`ControlEvent` with the supplied operands
+        captured verbatim. For the two state-changing sub-commands
+        (`enabled`, `config`) the matching block's state is also
+        mutated when the block exists; missing-block invocations still
+        emit the event (mirrors `printflush` to a nonexistent block).
+
+        Other sub-commands (`shoot`, `shootp`, `color`) have no
+        observable state on the mock side beyond the event itself —
+        they are pure intent records.
+        """
+        self.events.emit(
+            ControlEvent, op=op, block_name=block_name, args=tuple(args)
+        )
+        block = self.lookup_block(block_name)
+        if block is None:
+            return
+        if op == "enabled" and args:
+            block.state["on"] = bool(args[0])
+        elif op == "config" and args:
+            block.state["config"] = args[0]
+
     def read_variable(self, name: str) -> float:
         """Read a user or magic variable. Defaults missing names to 0.0
         (mlog: null). Emits VariableReadEvent.
@@ -242,6 +284,7 @@ class MockWorld:
 
 __all__ = [
     "Block",
+    "ControlEvent",
     "Event",
     "EventStream",
     "LinkResolvedEvent",

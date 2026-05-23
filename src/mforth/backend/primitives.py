@@ -386,6 +386,57 @@ def _getlink(ex: "Executor") -> None:
 
 
 # ---------------------------------------------------------------------------
+# Mindustry CONTROL block-instructions (bead mforth-cto)
+#
+# Per-sub-command words. Each pops its operands in Forth order (top of
+# stack last), forwards to `world.control(op, block, *args)`. The world
+# records a `ControlEvent` and (for `enabled` / `config`) mutates the
+# matching block's state. Missing-block invocations still emit the event
+# — same convention as PRINTFLUSH (.12).
+# ---------------------------------------------------------------------------
+
+
+def _control_enabled(ex: "Executor") -> None:
+    """`CONTROL-ENABLED` — ( block flag -- )."""
+    flag = ex.data_stack.pop()
+    block = ex.data_stack.pop()
+    ex.world.control("enabled", str(block), flag)
+
+
+def _control_config(ex: "Executor") -> None:
+    """`CONTROL-CONFIG` — ( block value -- )."""
+    value = ex.data_stack.pop()
+    block = ex.data_stack.pop()
+    ex.world.control("config", str(block), value)
+
+
+def _control_shoot(ex: "Executor") -> None:
+    """`CONTROL-SHOOT` — ( block x y shoot -- )."""
+    shoot = ex.data_stack.pop()
+    y = ex.data_stack.pop()
+    x = ex.data_stack.pop()
+    block = ex.data_stack.pop()
+    ex.world.control("shoot", str(block), x, y, shoot)
+
+
+def _control_shootp(ex: "Executor") -> None:
+    """`CONTROL-SHOOTP` — ( block unit shoot -- )."""
+    shoot = ex.data_stack.pop()
+    unit = ex.data_stack.pop()
+    block = ex.data_stack.pop()
+    ex.world.control("shootp", str(block), unit, shoot)
+
+
+def _control_color(ex: "Executor") -> None:
+    """`CONTROL-COLOR` — ( block r g b -- )."""
+    b = ex.data_stack.pop()
+    g = ex.data_stack.pop()
+    r = ex.data_stack.pop()
+    block = ex.data_stack.pop()
+    ex.world.control("color", str(block), r, g, b)
+
+
+# ---------------------------------------------------------------------------
 # Public registry
 # ---------------------------------------------------------------------------
 
@@ -427,6 +478,12 @@ _PRIMITIVES: dict[str, PrimitiveFn] = {
     "WAIT": _wait,
     "SENSOR": _sensor,
     "GETLINK": _getlink,
+    # Mindustry CONTROL (bead mforth-cto)
+    "CONTROL-ENABLED": _control_enabled,
+    "CONTROL-CONFIG": _control_config,
+    "CONTROL-SHOOT": _control_shoot,
+    "CONTROL-SHOOTP": _control_shootp,
+    "CONTROL-COLOR": _control_color,
 }
 
 
