@@ -11,6 +11,7 @@
 # Loom per-session ephemera (audit-project [AUTOFIX:gitignore-worktrees])
 .claude/worktrees/
 .claude/workflow-state.json
+/.worktrees/
 
 # Python
 __pycache__/
