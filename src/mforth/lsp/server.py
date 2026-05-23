@@ -65,9 +65,27 @@ from lsprotocol import types as lsp
 from pygls.lsp.server import LanguageServer
 
 from mforth.backend.sidecar import SidecarError, parse_sidecar
-from mforth.dictionary import UnresolvedWordError, resolve
+from mforth.dictionary import (
+    BuiltinWord,
+    Definition,
+    UnresolvedWordError,
+    UserVariable,
+    resolve,
+)
 from mforth.lex import LexError
-from mforth.parse import ParseError, parse
+from mforth.parse import (
+    Begin,
+    DoLoop,
+    IfThen,
+    LitInt,
+    LitStr,
+    ParseError,
+    Program,
+    SrcLoc,
+    VarRef,
+    WordCall,
+    parse,
+)
 from mforth.stackcheck import StackError, stackcheck
 
 
@@ -172,6 +190,230 @@ def _file_from_uri(uri: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Hover (bead mforth-10t.24)
+# ---------------------------------------------------------------------------
+#
+# `hover_for(text, *, uri, position)` mirrors the `analyze_document` seam
+# from .23: a pure function the test harness can drive directly without
+# spinning up pygls. The hover handler registered on the server is a
+# thin shim that pulls the document text from the workspace and calls
+# this function.
+#
+# Algorithm:
+#
+# 1. Re-run lex → parse → resolve → stackcheck. If any stage fails, the
+#    pipeline cannot give a meaningful answer about a term at the
+#    cursor, so we return None (no hover). Diagnostics surface the
+#    error via the separate publishDiagnostics path; hover stays
+#    silent rather than echoing the failure.
+#
+# 2. Walk every Term in the AST (main + every definition body, and
+#    recursively into IfThen/Begin/DoLoop bodies). For each term,
+#    compute its (line, start_col, end_col) extent and check whether
+#    the cursor lands within that extent.
+#
+# 3. Classify the matched term:
+#      * WordCall → look up in dictionary; format per entry kind
+#        (BuiltinWord / Definition / UserVariable).
+#      * LitInt / LitStr → format as a literal hover.
+#    For BuiltinWord, the doc field is rendered verbatim; if it's
+#    empty (none today, but defensive for future entries) the
+#    fallback `(no documentation)` is used.
+#
+# Hover content format: plain text (`MarkupKind.PlainText`). Plain text
+# avoids Markdown-escaping issues with `<`, `>`, `*`, `+` — all of
+# which appear verbatim in mforth stack-effect notation and
+# arithmetic primitives. Editors render `( a -- b )` and `1 -- 1`
+# fine as-is. If a future bead wants Markdown bullets we'll switch
+# globally.
+#
+# Position fidelity: token extents are derived from the source
+# location (1-based line, col) and the rendered length of the term
+# (`name` for WordCall, `str(value)` for LitInt, `len(value) + 2` for
+# LitStr to cover surrounding quotes). The lexer does not export
+# end-column today; this approximation is correct for every v1
+# fixture and degrades gracefully for unusual whitespace (the
+# hover-for-whitespace test pins the "no hover on a space" case).
+
+
+_HOVER_FAILED = object()  # sentinel for failed analysis
+
+
+def hover_for(
+    text: str, *, uri: str, position: lsp.Position
+) -> lsp.Hover | None:
+    """Return a hover for the term under ``position``, or None if the
+    cursor isn't on a recognizable term or analysis fails."""
+    file = _file_from_uri(uri)
+
+    # Hover needs the AST + the dictionary at minimum. parse/resolve
+    # failures kill hover (we have nothing to point at). Stackcheck
+    # failures are NON-fatal — without inferred effects we still
+    # display the literal/built-in shape; user-definition effects
+    # render as `( ? -- ? )`.
+    try:
+        program = parse(text, file=file)
+    except (LexError, ParseError):
+        return None
+
+    try:
+        dictionary = resolve(program)
+    except UnresolvedWordError:
+        return None
+
+    try:
+        sc_result = stackcheck(program, dictionary=dictionary)
+    except (StackError, UnresolvedWordError):
+        sc_result = None
+
+    term = _term_at_position(program, position)
+    if term is None:
+        return None
+
+    body = _format_hover(term, dictionary, sc_result)
+    if body is None:
+        return None
+    return lsp.Hover(
+        contents=lsp.MarkupContent(kind=lsp.MarkupKind.PlainText, value=body)
+    )
+
+
+def _term_at_position(program: Program, position: lsp.Position):
+    """Find the AST term whose source extent contains ``position``.
+
+    Position is LSP-style (0-based line + character). Term src_loc is
+    1-based. Returns the matched term or None.
+    """
+    target_line_1based = position.line + 1
+    target_col_1based = position.character + 1
+
+    match: object | None = None
+
+    def _visit(term) -> None:
+        nonlocal match
+        if match is not None:
+            return
+
+        # Recurse into structural nodes that don't themselves have a
+        # paste-able hover. (IfThen/Begin/DoLoop are AST scaffolding;
+        # the if/then/begin/loop keywords don't survive parsing as
+        # WordCalls so they have no hover in v1 — see negative case.)
+        if isinstance(term, IfThen):
+            for t in term.then_body:
+                _visit(t)
+            for t in term.else_body:
+                _visit(t)
+            return
+        if isinstance(term, Begin):
+            for t in term.body:
+                _visit(t)
+            for t in term.cond_body:
+                _visit(t)
+            return
+        if isinstance(term, DoLoop):
+            for t in term.body:
+                _visit(t)
+            return
+
+        extent = _term_extent(term)
+        if extent is None:
+            return
+        line, start, end = extent
+        if line == target_line_1based and start <= target_col_1based < end:
+            match = term
+
+    for t in program.main:
+        _visit(t)
+    for defn in program.definitions:
+        for t in defn.body:
+            _visit(t)
+
+    return match
+
+
+def _term_extent(term) -> tuple[int, int, int] | None:
+    """Return (line, start_col, end_col_exclusive) for a term, all
+    1-based. Returns None if the term has no representable extent
+    (control-flow structural nodes — but those are filtered before
+    this is called)."""
+    if isinstance(term, WordCall):
+        return (term.src_loc.line, term.src_loc.col, term.src_loc.col + len(term.name))
+    if isinstance(term, LitInt):
+        return (
+            term.src_loc.line,
+            term.src_loc.col,
+            term.src_loc.col + len(str(term.value)),
+        )
+    if isinstance(term, LitStr):
+        # `." hello"` — the parser puts src_loc on the `."` opener; the
+        # rendered length covers the opener (2 chars), the value, and the
+        # trailing quote. This is an approximation, but it's enough to
+        # let the cursor land anywhere on the literal and hit it.
+        return (
+            term.src_loc.line,
+            term.src_loc.col,
+            term.src_loc.col + len(term.value) + 4,
+        )
+    if isinstance(term, VarRef):
+        return (term.src_loc.line, term.src_loc.col, term.src_loc.col + len(term.name))
+    return None
+
+
+def _format_hover(term, dictionary, sc_result) -> str | None:
+    """Render the hover body for a matched term. Returns None if the
+    term shape isn't hover-able (e.g. an unresolved word)."""
+    if isinstance(term, LitInt):
+        return f"{term.value}\n( -- n )"
+    if isinstance(term, LitStr):
+        return f'"{term.value}"\n( -- str )'
+    if isinstance(term, WordCall):
+        entry = dictionary.lookup(term.name)
+        if entry is None:
+            return None
+        if isinstance(entry, BuiltinWord):
+            return _format_builtin(entry)
+        if isinstance(entry, Definition):
+            return _format_user_def(entry, sc_result)
+        if isinstance(entry, UserVariable):
+            return _format_user_var(entry)
+    if isinstance(term, VarRef):
+        entry = dictionary.lookup(term.name)
+        if isinstance(entry, UserVariable):
+            return _format_user_var(entry)
+    return None
+
+
+def _format_stack_effect(in_arity: int, out_arity: int) -> str:
+    return f"( {in_arity} -- {out_arity} )"
+
+
+def _format_builtin(entry: BuiltinWord) -> str:
+    eff = _format_stack_effect(entry.stack_effect.in_arity, entry.stack_effect.out_arity)
+    doc = entry.doc if entry.doc else "(no documentation)"
+    return f"{entry.name} {eff}\n{doc}"
+
+
+def _format_user_def(entry: Definition, sc_result) -> str:
+    eff_obj = None
+    if sc_result is not None and sc_result.effects is not None:
+        eff_obj = sc_result.effects.get(entry.name)
+    if eff_obj is not None:
+        eff = _format_stack_effect(eff_obj.in_arity, eff_obj.out_arity)
+    else:
+        eff = "( ? -- ? )"
+    loc = entry.src_loc
+    return f"{entry.name} {eff}\ndefined at {loc.file}:{loc.line}:{loc.col}"
+
+
+def _format_user_var(entry: UserVariable) -> str:
+    loc = entry.src_loc
+    return (
+        f"{entry.name} ( -- addr )\n"
+        f"variable defined at {loc.file}:{loc.line}:{loc.col}"
+    )
+
+
+# ---------------------------------------------------------------------------
 # pygls server factory
 # ---------------------------------------------------------------------------
 
@@ -188,12 +430,23 @@ def create_server() -> LanguageServer:
     did_change handlers wired to the analyzer."""
     server = LanguageServer(name=SERVER_NAME, version=_get_server_version())
 
+    # Per-server URI → latest text cache. Populated by did_open and
+    # did_change. The hover handler reads from this rather than from
+    # `ls.workspace.get_text_document(uri)` because the workspace API
+    # requires an initialized server (i.e. a live transport), which
+    # the test harness intentionally doesn't provide. Keeping our own
+    # cache also means hover behavior is deterministic and decoupled
+    # from pygls' internal sync-kind state machine.
+    document_cache: dict[str, str] = {}
+    server._mforth_document_cache = document_cache  # type: ignore[attr-defined]
+
     @server.feature(lsp.TEXT_DOCUMENT_DID_OPEN)
     def _on_did_open(
         ls: LanguageServer, params: lsp.DidOpenTextDocumentParams
     ) -> None:
         uri = params.text_document.uri
         text = params.text_document.text
+        document_cache[uri] = text
         diags = _select_analyzer(uri)(text, uri=uri)
         ls.text_document_publish_diagnostics(
             lsp.PublishDiagnosticsParams(uri=uri, diagnostics=diags)
@@ -211,10 +464,24 @@ def create_server() -> LanguageServer:
         text = _extract_change_text(ls, params)
         if text is None:
             return
+        document_cache[uri] = text
         diags = _select_analyzer(uri)(text, uri=uri)
         ls.text_document_publish_diagnostics(
             lsp.PublishDiagnosticsParams(uri=uri, diagnostics=diags)
         )
+
+    @server.feature(lsp.TEXT_DOCUMENT_HOVER)
+    def _on_hover(
+        ls: LanguageServer, params: lsp.HoverParams
+    ) -> lsp.Hover | None:
+        uri = params.text_document.uri
+        # Sidecar TOML documents don't get hover in v1 — only Forth.
+        if uri.endswith(SIDECAR_SUFFIX):
+            return None
+        text = document_cache.get(uri)
+        if text is None:
+            return None
+        return hover_for(text, uri=uri, position=params.position)
 
     return server
 
@@ -271,5 +538,6 @@ __all__ = [
     "analyze_document",
     "analyze_sidecar",
     "create_server",
+    "hover_for",
     "serve_stdio",
 ]
