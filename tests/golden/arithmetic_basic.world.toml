@@ -1,0 +1,12 @@
+# arithmetic_basic.world.toml — minimal sidecar for the canonical golden
+# fixture.  No links needed (no Mindustry primitives exercised); a
+# `[clock]` section is present so the sidecar parser has something
+# real to validate.
+#
+# The harness loads the sidecar to confirm it parses cleanly, but the
+# codegen path itself does not consume it — sidecars feed the host
+# REPL (and later the in-repo mlog interpreter), not the emitter.
+
+[clock]
+ipt      = 8
+realtime = false

@@ -1,0 +1,7 @@
+# begin_until.world.toml — pure-arithmetic loop fixture; no Mindustry
+# blocks required.  Sidecar exists so the harness's "every .fs has a
+# sibling .world.toml" discipline stays uniform.
+
+[clock]
+ipt      = 8
+realtime = false

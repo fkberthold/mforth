@@ -1,0 +1,7 @@
+# if_then.world.toml — no Mindustry blocks needed; the fixture is a
+# pure-arithmetic IF/THEN exerciser.  Sidecar exists so the harness's
+# "every .fs has a sibling .world.toml" discipline stays uniform.
+
+[clock]
+ipt      = 8
+realtime = false

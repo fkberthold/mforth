@@ -1,0 +1,5 @@
+set s0 1
+set s1 2
+op add s0 s0 s1
+set s1 3
+op mul s0 s0 s1

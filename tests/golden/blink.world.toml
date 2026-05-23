@@ -1,0 +1,13 @@
+# blink.world.toml — paired sidecar for the v1 blink demo (xfail).
+#
+# Names a single switch block by in-game name (Mode A, recommended for
+# tutorials per CLAUDE.md "Sidecar `.world.toml` indirection" rule).
+
+[links.switch1]
+type    = "switch"
+target  = "switch1"
+enabled = false
+
+[clock]
+ipt      = 8
+realtime = false

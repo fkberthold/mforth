@@ -1,0 +1,11 @@
+# getlink_index_mode.world.toml — Mode B (index) link binding.  The
+# `index` mode is fragile to re-link order (per CLAUDE.md), used here
+# specifically to exercise the getlink prologue that .19 will emit.
+
+[links.display]
+type  = "message"
+index = 0
+
+[clock]
+ipt      = 8
+realtime = false

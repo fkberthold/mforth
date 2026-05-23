@@ -1,0 +1,12 @@
+# counter.world.toml — paired sidecar for the v1 counter demo (xfail).
+#
+# Names the message block by in-game name (Mode A — recommended; see
+# CLAUDE.md "Sidecar `.world.toml` indirection" rule).
+
+[links.display]
+type   = "message"
+target = "message1"
+
+[clock]
+ipt      = 8
+realtime = false
