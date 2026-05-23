@@ -53,6 +53,6 @@
 # - github.org
 # - github.repo
 
-export.path: ".beads/issues.jsonl"
+export.path: "issues.jsonl"
 
 export.git-add: false
