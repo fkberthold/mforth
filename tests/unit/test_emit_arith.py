@@ -423,12 +423,17 @@ def test_control_flow_is_supported_by_bead_17():
     assert any(label is not None for (label, _, _) in instrs)
 
 
-def test_mindustry_primitive_not_yet_supported():
-    """PRINT/PRINTFLUSH/WAIT/SENSOR/GETLINK are a later bead — they're
-    in the dictionary but emit raises NotImplementedError naming the
-    word."""
-    with pytest.raises(NotImplementedError, match="PRINT"):
-        compile_to_tuples("42 PRINT")
+def test_mindustry_primitives_now_supported_smoke_check():
+    """As of bead .18, the five v1 Mindustry primitives (PRINT,
+    PRINTFLUSH, WAIT, SENSOR, GETLINK) emit real instructions.  This
+    smoke check confirms `42 PRINT` no longer raises and produces a
+    `print` instruction; full contract coverage lives in
+    `test_emit_mindustry.py`.
+
+    The IO printing word `.` remains deferred — see
+    `test_dot_io_still_deferred` in `test_emit_mindustry.py`."""
+    instrs = compile_to_tuples("42 PRINT")
+    assert any(opcode == "print" for (_, opcode, _) in instrs if opcode is not None)
 
 
 def test_loose_variable_address_on_stack_is_rejected():
