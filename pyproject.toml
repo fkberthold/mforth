@@ -16,6 +16,13 @@ dev = [
     "pytest-cov>=5",
 ]
 
+[project.scripts]
+# Console script: `mforth <subcommand>` after `pip install -e .`.
+# Subcommands register themselves via `mforth.cli.register_subcommand`;
+# see src/mforth/cli.py for the registry pattern future subcommand
+# beads (.20 viz, .23 LSP, run, compile, repl) follow.
+mforth = "mforth.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/mforth"]
 
