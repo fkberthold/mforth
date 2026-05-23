@@ -52,3 +52,7 @@
 # - linear.api-key
 # - github.org
 # - github.repo
+
+export.path: ".beads/issues.jsonl"
+
+export.git-add: false

@@ -4,6 +4,10 @@
 *.db
 .beads-credential-key
 
+# Stray bd export at repo root — bd's pre-commit hook can write here on some
+# configs (export.git-add=true). The canonical export lives at .beads/issues.jsonl.
+/issues.jsonl
+
 # Loom per-session ephemera (audit-project [AUTOFIX:gitignore-worktrees])
 .claude/worktrees/
 .claude/workflow-state.json
