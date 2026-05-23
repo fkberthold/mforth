@@ -70,6 +70,7 @@ nav:
       - how-to/index.md
       - Install: how-to/install.md
       - Use with Helix: how-to/use-with-helix.md
+      - Use with Neovim: how-to/use-with-nvim.md
   - Reference:
       - reference/index.md
   - Explanation:
