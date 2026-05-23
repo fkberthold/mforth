@@ -1,0 +1,32 @@
+# mforth — Helix language + grammar + LSP wiring.
+#
+# Append this fragment to your ~/.config/helix/languages.toml (or to a
+# project-local .helix/languages.toml). Replace the placeholder source
+# path with the absolute path to your local tree-sitter-mforth checkout.
+#
+# After editing, from Helix:
+#     :grammar fetch
+#     :grammar build
+# (Or from the shell:  hx --grammar fetch && hx --grammar build)
+#
+# The language-server section below assumes `mforth lsp` is on your PATH.
+# That subcommand does NOT exist yet — it lands with bead mforth-10t.20
+# (LSP server). Until then, Helix will silently skip the LSP and you'll
+# still get tree-sitter syntactic highlighting from the grammar.
+
+[[language]]
+name = "mforth"
+scope = "source.mforth"
+file-types = ["fs"]
+roots = [".world.toml", "pyproject.toml"]
+comment-token = "\\"
+indent = { tab-width = 2, unit = "  " }
+language-servers = ["mforth-lsp"]
+
+[[grammar]]
+name = "mforth"
+source = { path = "/absolute/path/to/tree-sitter-mforth" }
+
+[language-server.mforth-lsp]
+command = "mforth"
+args = ["lsp"]

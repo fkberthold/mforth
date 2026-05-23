@@ -1,0 +1,56 @@
+{
+  "name": "tree-sitter-mforth",
+  "version": "0.1.0",
+  "description": "tree-sitter grammar for mforth (a pragmatic Forth dialect that compiles to Mindustry mlog)",
+  "keywords": [
+    "parser",
+    "tree-sitter",
+    "forth",
+    "mforth",
+    "mindustry",
+    "mlog"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fkberthold/mforth.git",
+    "directory": "tree-sitter-mforth"
+  },
+  "main": "bindings/node",
+  "types": "bindings/node",
+  "files": [
+    "grammar.js",
+    "binding.gyp",
+    "bindings/node/*",
+    "queries/*",
+    "src/**"
+  ],
+  "dependencies": {
+    "node-addon-api": "^7.1.0",
+    "node-gyp-build": "^4.8.0"
+  },
+  "peerDependencies": {
+    "tree-sitter": "^0.21.0"
+  },
+  "peerDependenciesMeta": {
+    "tree-sitter": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.22.0"
+  },
+  "scripts": {
+    "build": "tree-sitter generate",
+    "parse": "tree-sitter parse",
+    "test": "tree-sitter test"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.mforth",
+      "file-types": ["fs"],
+      "injection-regex": "^mforth$",
+      "highlights": "queries/highlights.scm"
+    }
+  ]
+}

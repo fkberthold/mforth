@@ -31,3 +31,11 @@ build/
 .vscode/
 *.swp
 .DS_Store
+
+# tree-sitter generated artifacts (regenerated via `tree-sitter generate`)
+tree-sitter-mforth/src/parser.c
+tree-sitter-mforth/src/grammar.json
+tree-sitter-mforth/src/node-types.json
+tree-sitter-mforth/src/tree_sitter/
+tree-sitter-mforth/node_modules/
+tree-sitter-mforth/build/
