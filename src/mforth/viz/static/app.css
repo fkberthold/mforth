@@ -1,0 +1,55 @@
+/* Stub viz styles (bead mforth-10t.20).
+ *
+ * The real layout lands in bead mforth-10t.21. These rules just keep
+ * the shell legible for manual inspection during the .20 → .21 gap.
+ */
+
+body {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  margin: 0;
+  background: #111;
+  color: #eee;
+}
+
+#mforth-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid #333;
+}
+
+#mforth-header h1 {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+}
+
+#mforth-status[data-state="disconnected"] {
+  color: #c66;
+}
+
+#mforth-status[data-state="connected"] {
+  color: #6c6;
+}
+
+#mforth-panes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  padding: 1rem;
+}
+
+#mforth-panes section {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  padding: 0.75rem;
+}
+
+#mforth-panes h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.85rem;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}

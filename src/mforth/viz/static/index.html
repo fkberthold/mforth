@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>mforth viz</title>
+    <link rel="stylesheet" href="/app.css" />
+  </head>
+  <body>
+    <!--
+      Basic shell for the mforth web visualizer (bead mforth-10t.20).
+      The viz CLIENT (world pane / block detail / Forth pane / stack
+      pane / event log) is bead mforth-10t.21 — it extends this shell
+      by populating the panes below from the WebSocket stream this
+      server exposes.
+    -->
+    <header id="mforth-header">
+      <h1>mforth</h1>
+      <span id="mforth-status" data-state="disconnected">disconnected</span>
+    </header>
+    <main id="mforth-panes">
+      <section id="mforth-world-pane" aria-label="world">
+        <h2>World</h2>
+        <div data-empty>(viz client lands in bead mforth-10t.21)</div>
+      </section>
+      <section id="mforth-event-log" aria-label="events">
+        <h2>Events</h2>
+        <ol data-empty></ol>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

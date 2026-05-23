@@ -8,7 +8,16 @@ version = "0.0.1"
 description = "Pragmatic Forth dialect that compiles to Mindustry mlog"
 requires-python = ">=3.11"
 authors = [{ name = "Frank Berthold" }]
-dependencies = []
+# Runtime deps kept intentionally minimal. `websockets` is the single
+# new addition for the bead .20 web viz HTTP+WS server — chosen over
+# FastAPI (which would pull starlette + pydantic + anyio) because the
+# viz needs exactly one push-only event stream + a small control
+# channel; the well-maintained `websockets` library is a clean,
+# stdlib-shaped fit. See src/mforth/viz/server.py module docstring
+# for the full library-choice rationale.
+dependencies = [
+    "websockets>=12",
+]
 
 [project.optional-dependencies]
 dev = [
