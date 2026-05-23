@@ -4,10 +4,27 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mforth"
-version = "0.0.1"
+version = "0.1.0"
 description = "Pragmatic Forth dialect that compiles to Mindustry mlog"
+readme = "README.md"
+license = { text = "MIT" }
 requires-python = ">=3.11"
-authors = [{ name = "Frank Berthold" }]
+authors = [{ name = "Frank Berthold", email = "fkberthold@gmail.com" }]
+keywords = ["forth", "mindustry", "mlog", "compiler", "repl", "lsp"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Compilers",
+    "Topic :: Software Development :: Interpreters",
+    "Topic :: Games/Entertainment",
+]
 # Runtime deps kept intentionally minimal. Two additions landed alongside
 # each other from the wave-3 parallel bead burst:
 #   * `websockets` — bead mforth-10t.20 web viz HTTP+WS server (chosen
@@ -31,6 +48,11 @@ dev = [
     "pytest-cov>=5",
 ]
 
+[project.urls]
+Homepage = "https://github.com/fkberthold/mforth"
+Repository = "https://github.com/fkberthold/mforth"
+Issues = "https://github.com/fkberthold/mforth/issues"
+
 [project.scripts]
 # Console script: `mforth <subcommand>` after `pip install -e .`.
 # Subcommands register themselves via `mforth.cli.register_subcommand`;
@@ -40,6 +62,27 @@ mforth = "mforth.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mforth"]
+
+[tool.hatch.build.targets.sdist]
+# Default hatchling sdist scope is "everything not in .gitignore", which sucks
+# in the .beads/ database (including its 2 MB+ backup .darc snapshot) and
+# .claude/ ephemera. Pin the sdist to source-of-truth files only: src/, tests/,
+# examples/, the tree-sitter grammar, the editor configs, and the top-level
+# README + LICENSE + pyproject.toml that PyPI needs for long_description /
+# metadata extraction.
+include = [
+    "/src",
+    "/tests",
+    "/examples",
+    "/tree-sitter-mforth",
+    "/editor",
+    "/docs",
+    "/README.md",
+    "/LICENSE",
+    "/CLAUDE.md",
+    "/AGENTS.md",
+    "/pyproject.toml",
+]
 
 [tool.pytest.ini_options]
 # tests/unit exists today; the other three are placeholders for future beads
