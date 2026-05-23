@@ -97,6 +97,24 @@ host REPL → mlog backend → LSP → tree-sitter grammar → web viz, with
 729+ tests pinning behavior and a property test that asserts REPL ↔ mlog
 event-stream equivalence on every shipped example.
 
+## Documentation
+
+The full documentation lives in [`docs/`](docs/), organized per the
+[Diataxis](https://diataxis.fr/) framework:
+
+- **Tutorials** ([`docs/tutorials/`](docs/tutorials/)) — guided, learn-by-doing.
+  Start here if you're new to mforth or new to mlog.
+- **How-to guides** ([`docs/how-to/`](docs/how-to/)) — task-focused recipes
+  (e.g., wiring mforth into Helix, pairing with a sidecar).
+- **Reference** ([`docs/reference/`](docs/reference/)) — the dictionary
+  word list, sidecar schema, CLI subcommands.
+- **Explanation** ([`docs/explanation/`](docs/explanation/)) — design
+  rationale, the REPL ↔ mlog equivalence property, the dialect-choice
+  trade-offs.
+
+Until the docs tree is fully populated, the MemPalace decision drawers
+cited in **Status** above are the authoritative deep-dive.
+
 ## Development
 
 ```bash
