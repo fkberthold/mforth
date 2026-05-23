@@ -43,6 +43,7 @@ from mforth.parse import (
     LitStr,
     Program,
     SrcLoc,
+    VarRef,
     WordCall,
 )
 
@@ -160,6 +161,23 @@ def stackcheck(
 
             if isinstance(term, (LitInt, LitStr)):
                 depth += 1
+                continue
+
+            if isinstance(term, VarRef):
+                # Fused variable access: fetch pushes the value, store
+                # pops the value.  Added for the mlog emit pass
+                # (bead mforth-10t.16) — the AST fusion pass turns
+                # `<name> @` / `<name> !` sequences into VarRef nodes
+                # so the slot allocator's depths match the emitted
+                # instructions.
+                if term.mode == "fetch":
+                    depth += 1
+                elif term.mode == "store":
+                    after_pop = depth - 1
+                    note_depth(after_pop, term.src_loc)
+                    depth = after_pop
+                else:
+                    raise ValueError(f"unknown VarRef mode {term.mode!r}")
                 continue
 
             if isinstance(term, WordCall):
