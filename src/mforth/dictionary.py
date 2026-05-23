@@ -180,6 +180,10 @@ _BUILTINS: list[BuiltinWord] = [
         "retrieve i-th linked block: ( i -- block )",
         "mindustry",
     ),
+    # DO/LOOP counters. Valid only inside a DO/LOOP body, but the dictionary
+    # treats them as plain (0, 1) pushes for resolution + stack arithmetic.
+    BuiltinWord("I", StackEffect(0, 1), "push current DO/LOOP counter", "control"),
+    BuiltinWord("J", StackEffect(0, 1), "push outer DO/LOOP counter", "control"),
 ]
 
 
