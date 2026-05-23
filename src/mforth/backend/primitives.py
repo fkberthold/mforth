@@ -8,10 +8,41 @@ executor instance.
 
 This bead covers the arith / stack / logical / var / io families.
 Mindustry-tagged primitives (PRINT, PRINTFLUSH, WAIT, SENSOR,
-GETLINK) extend this same module via bead mforth-10t.12. I and J
-(control tag) ship in the executor's default primitive set
+GETLINK) are wired in this same module by bead mforth-10t.12 — see
+the "Mindustry primitives" section below. I and J (control tag)
+ship in the executor's default primitive set
 (`backend.host._DEFAULT_PRIMITIVES`) because every DO/LOOP test in
 .10 already depends on them; we do not override them here.
+
+## Block-handle representation (LOAD-BEARING — bead .12)
+
+PRINTFLUSH, SENSOR, and GETLINK all traffic in "block handles" — the
+data-stack form of a reference to a linked Mindustry block. The host
+REPL represents a block handle as the **bare mforth-name string**
+(e.g. `"message1"`), NOT a prefixed form like `"block:message1"`:
+
+* `MockWorld.lookup_block(name)` and `MockWorld.getlink(i)` both
+  speak the bare-name form, so primitive bodies pass values through
+  unchanged with no prefix-strip step.
+* mlog itself uses bare identifiers for block names in emitted source,
+  so the REPL ↔ mlog equivalence story stays one-to-one — bead .16's
+  emitter pushes the same bare name into the slot variable.
+* The data stack is a heterogeneous Python list; bare strings are
+  already structurally distinct from numerics, so the "block:" prefix
+  would only add overhead without resolving any ambiguity.
+
+The bead text recommended the `"block:<name>"` form; this override
+was made at design time and is mirrored in
+`tests/unit/test_mindustry_primitives.py`'s module docstring.
+
+## GETLINK out-of-range returns None (mlog null)
+
+`world.getlink(i)` returns `None` for out-of-range `i` (mlog returns
+`null`). The host primitive pushes that `None` onto the data stack to
+satisfy the static stack effect `(1, 1)` — pushing nothing would
+underflow a downstream consumer and falsify the stackchecker. The
+mlog interpreter (bead .31) produces the equivalent observable (the
+result variable is left as `null`).
 
 ## Comparison-encoding contract (LOAD-BEARING)
 
@@ -288,6 +319,73 @@ def _dot(ex: "Executor") -> None:
 
 
 # ---------------------------------------------------------------------------
+# Mindustry primitives (bead mforth-10t.12)
+#
+# Each is a thin pass-through to a `MockWorld` method that emits the
+# corresponding Event on the world's EventStream. The host REPL and the
+# mlog backend (bead .16) must produce identical event sequences for the
+# same source program — that is the REPL ↔ mlog equivalence contract.
+# ---------------------------------------------------------------------------
+
+
+def _print(ex: "Executor") -> None:
+    """`PRINT` — ( str -- ) queue a value to the world's print buffer.
+
+    `world.print(str)` calls `str()` on its input and emits
+    `MessagePrintEvent(text=...)`. Numeric arguments are stringified
+    via Python's `str()` (matches mlog `print` which accepts any value).
+    """
+    value = ex.data_stack.pop()
+    ex.world.print(value)
+
+
+def _printflush(ex: "Executor") -> None:
+    """`PRINTFLUSH` — ( block -- ) flush the print buffer to a message
+    block. Block handle is the bare mforth-name string. Emits
+    `MessagePrintflushEvent(block_name, buffer)` regardless of whether
+    the block exists (mlog: silent on bad block; the event is still
+    observable so subscribers can count attempts).
+    """
+    block_name = ex.data_stack.pop()
+    ex.world.printflush(str(block_name))
+
+
+def _wait(ex: "Executor") -> None:
+    """`WAIT` — ( seconds -- ) advance the simulation clock and emit
+    `WaitEvent(seconds)`. `world.wait` coerces via `float(seconds)`.
+    """
+    seconds = ex.data_stack.pop()
+    ex.world.wait(seconds)
+
+
+def _sensor(ex: "Executor") -> None:
+    """`SENSOR` — ( block prop -- value ) read property `prop` from the
+    named block and push the value. Missing block or missing property
+    yields 0.0 (community-lore mlog behavior; pinned in world.py).
+    Emits `SensorReadEvent(block_name, prop, value)`.
+    """
+    prop = ex.data_stack.pop()
+    block_name = ex.data_stack.pop()
+    value = ex.world.sensor(str(block_name), str(prop))
+    ex.data_stack.append(value)
+
+
+def _getlink(ex: "Executor") -> None:
+    """`GETLINK` — ( i -- block ) push the bare mforth-name of the i-th
+    linked block, or `None` if i is out of range (mlog: null). Static
+    stack effect (1, 1) requires that *something* be pushed even on the
+    out-of-range path; pushing `None` is the closest analog to mlog's
+    `null` and matches `world.getlink`'s return contract.
+
+    `world.getlink` only emits `LinkResolvedEvent` for in-range lookups;
+    out-of-range is silent on the event stream, by design.
+    """
+    i = ex.data_stack.pop()
+    result = ex.world.getlink(int(i))
+    ex.data_stack.append(result)
+
+
+# ---------------------------------------------------------------------------
 # Public registry
 # ---------------------------------------------------------------------------
 
@@ -323,6 +421,12 @@ _PRIMITIVES: dict[str, PrimitiveFn] = {
     "!": _store,
     # IO
     ".": _dot,
+    # Mindustry (bead .12)
+    "PRINT": _print,
+    "PRINTFLUSH": _printflush,
+    "WAIT": _wait,
+    "SENSOR": _sensor,
+    "GETLINK": _getlink,
 }
 
 
@@ -337,8 +441,11 @@ def register_all(executor: "Executor") -> None:
     the executor's loop-control machinery, not the word table).
 
     Mindustry primitives (PRINT, PRINTFLUSH, WAIT, SENSOR, GETLINK)
-    are NOT registered here — bead mforth-10t.12 owns those and
-    extends this module.
+    are also registered here — bead mforth-10t.12 wired them in. Each
+    is a thin pass-through to a `MockWorld` method that emits the
+    corresponding Event on `world.events`. Block handles on the data
+    stack are bare mforth-name strings (see the module docstring's
+    "Block-handle representation" section).
 
     VARIABLE is NOT in the table — the executor handles the literal
     `WordCall("VARIABLE")` directly to consume the next term as the
