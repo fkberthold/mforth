@@ -202,6 +202,9 @@ def _load_subcommands() -> None:
     # when the module is already cached in sys.modules.
     from mforth import cli_run as _run_cli  # noqa: F401  -- side-effect import (bead .14)
     _run_cli.register()
+    # Bead .19 — `compile` follows the same explicit-`register()` pattern.
+    from mforth import cli_compile as _compile_cli  # noqa: F401  -- side-effect import (bead .19)
+    _compile_cli.register()
 
 
 # --------------------------------------------------------------------------

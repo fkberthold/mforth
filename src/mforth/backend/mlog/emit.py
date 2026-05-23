@@ -816,6 +816,61 @@ class _Emitter:
             self._emit(out, "printflush", (name,))
             return 2
 
+        # LinkRef lifting (bead .19): a UserVariable WordCall (typically
+        # a sidecar-pre-seeded link name like ``display`` or ``switch1``)
+        # followed by PRINT / PRINTFLUSH / SENSOR lifts to the bare-name
+        # form. Without this lift the `display PRINTFLUSH` pattern would
+        # trip the cell-free guard (v1 has no addressable cells), even
+        # though the program is well-formed against a sidecar.
+        #
+        # This is the .18 cross-bead note #5 ("Resolver synthesis of a
+        # LinkRef Term") realized — instead of synthesizing a new Term
+        # type, we recognize the existing WordCall(UserVariable) shape
+        # and emit the lifted form directly. The .19 finalize pass then
+        # substitutes the in-game name for Mode A links.
+        def is_uservar(k: int) -> Optional[str]:
+            if k >= len(body):
+                return None
+            t = body[k]
+            if not isinstance(t, WordCall):
+                return None
+            entry = self.dictionary.lookup(t.name)
+            if isinstance(entry, UserVariable):
+                return entry.name
+            return None
+
+        # SENSOR: 3-term `<link-uservar> LitStr SENSOR`.
+        if (
+            i + 2 < len(body)
+            and (uvname := is_uservar(i)) is not None
+            and isinstance(body[i + 1], LitStr)
+            and is_primitive(i + 2, "SENSOR")
+        ):
+            prop_value = body[i + 1].value
+            sensor = body[i + 2]
+            rw = self._rw(sensor, slot_rewrite)
+            self._emit(out, "sensor", (rw.writes[0], uvname, prop_value))
+            return 3
+
+        # PRINTFLUSH: 2-term `<link-uservar> PRINTFLUSH`.
+        if (
+            i + 1 < len(body)
+            and (uvname := is_uservar(i)) is not None
+            and is_primitive(i + 1, "PRINTFLUSH")
+        ):
+            self._emit(out, "printflush", (uvname,))
+            return 2
+
+        # PRINT: 2-term `<link-uservar> PRINT` — emits the bare name,
+        # which mlog `print` accepts (it prints the variable's value).
+        if (
+            i + 1 < len(body)
+            and (uvname := is_uservar(i)) is not None
+            and is_primitive(i + 1, "PRINT")
+        ):
+            self._emit(out, "print", (uvname,))
+            return 2
+
         return 0
 
     def _emit_mindustry_slot_form(self, out: list, name: str, rw) -> None:
