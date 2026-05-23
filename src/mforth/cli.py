@@ -194,8 +194,8 @@ def _load_subcommands() -> None:
     # Future subcommand beads add their imports here:
     #   from mforth import run as _run_mod  # noqa: F401  -- side-effect import
     #   from mforth import compile as _compile_mod  # noqa: F401
-    #   from mforth.lsp import cli as _lsp_cli  # noqa: F401
     #   ... etc.
+    from mforth.lsp import cli_subcommand as _lsp_cli  # noqa: F401  -- side-effect import
 
 
 # --------------------------------------------------------------------------
