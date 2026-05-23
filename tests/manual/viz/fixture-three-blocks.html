@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>mforth viz fixture: three blocks</title>
+    <link rel="stylesheet" href="../../../src/mforth/viz/static/app.css" />
+  </head>
+  <body>
+    <!-- Mirrors src/mforth/viz/static/index.html so app.js finds its DOM. -->
+    <header id="mforth-header">
+      <h1>mforth — fixture: three blocks</h1>
+      <div id="mforth-controls" role="toolbar">
+        <button id="mforth-ctrl-pause" type="button" data-cmd="pause">pause</button>
+        <button id="mforth-ctrl-resume" type="button" data-cmd="resume">resume</button>
+        <button id="mforth-ctrl-step" type="button" data-cmd="step">step</button>
+        <span id="mforth-ctrl-ack"></span>
+      </div>
+      <div id="mforth-meta">
+        <span class="meta-label">tick</span>
+        <span id="mforth-tick">0</span>
+        <span id="mforth-status" data-state="disconnected">offline</span>
+      </div>
+    </header>
+    <main id="mforth-panes">
+      <section id="mforth-world-pane"><h2>World</h2>
+        <svg id="mforth-world-svg" viewBox="-100 -100 200 200">
+          <g id="mforth-world-edges"></g>
+          <g id="mforth-world-nodes"></g>
+          <circle id="mforth-world-processor" cx="0" cy="0" r="8"></circle>
+          <text id="mforth-world-processor-label" x="0" y="22" text-anchor="middle">processor</text>
+        </svg>
+        <div id="mforth-world-empty" data-empty>no links yet</div>
+      </section>
+      <section id="mforth-block-detail" data-collapsed="true">
+        <h2>Block detail <button id="mforth-block-close">x</button></h2>
+        <div id="mforth-block-empty" data-empty>click a block</div>
+        <div id="mforth-block-body" hidden>
+          <div class="block-head">
+            <span id="mforth-block-name"></span>
+            <span id="mforth-block-type"></span>
+          </div>
+          <pre id="mforth-block-state"></pre>
+        </div>
+      </section>
+      <section id="mforth-forth-pane"><h2>Forth</h2><pre id="mforth-forth-source"></pre></section>
+      <section id="mforth-stack-pane"><h2>Stack</h2><ol id="mforth-stack-list"></ol></section>
+    </main>
+    <section id="mforth-event-log" data-collapsed="false">
+      <h2>
+        <button id="mforth-log-toggle">[-]</button>
+        Event log
+        <label class="filter-label">filter <input id="mforth-log-filter" type="text" /></label>
+        <button id="mforth-log-clear">clear</button>
+      </h2>
+      <ol id="mforth-log-list"></ol>
+    </section>
+
+    <!-- Suppress WebSocket auto-connect by stubbing WebSocket BEFORE app.js loads. -->
+    <script>
+      window.WebSocket = function () { this.readyState = 0; this.close = function(){}; this.send = function(){}; this.addEventListener = function(){}; };
+      window.WebSocket.OPEN = 1;
+    </script>
+    <script src="../../../src/mforth/viz/static/app.js"></script>
+
+    <script>
+      // Drive the panes with synthetic protocol messages. Same wire shape
+      // VizServer emits — confirm with src/mforth/viz/server.py if in doubt.
+      const v = window.__mforthViz;
+      v.dispatch({
+        type: "snapshot",
+        world_state: {
+          tick: 0.0,
+          variables: {},
+          links: {
+            "message1":  { type: "message",     state: { buffer: [] } },
+            "switch1":   { type: "switch",      state: { on: false } },
+            "cell1":     { type: "memory-cell", state: { data: [0, 0, 0, 7, 0, 9] } },
+          },
+        },
+      });
+      // Append text into the message buffer then printflush it.
+      v.dispatch({ type: "event", event_type: "MessagePrintEvent",      payload: { timestamp: 0.1, text: "hello " } });
+      v.dispatch({ type: "event", event_type: "MessagePrintEvent",      payload: { timestamp: 0.2, text: "mindustry" } });
+      v.dispatch({ type: "event", event_type: "MessagePrintflushEvent", payload: { timestamp: 0.3, block_name: "message1", buffer: "hello mindustry" } });
+      // Pulse the edge to switch1 (sensor read).
+      v.dispatch({ type: "event", event_type: "SensorReadEvent",        payload: { timestamp: 0.4, block_name: "switch1", prop: "@enabled", value: 1 } });
+      // Add a fourth link mid-stream.
+      v.dispatch({ type: "event", event_type: "LinkResolvedEvent",      payload: { timestamp: 0.5, index: 3, block_name: "generic1" } });
+
+      // Manual checks:
+      //  1. World pane shows 4 circles around the central processor.
+      //  2. Click each block circle — block-detail pane fills with the
+      //     correct state (message1 buffer = "hello mindustry"; cell1
+      //     shows non-zero indices; switch1 shows on=false; generic1
+      //     shows empty state).
+      //  3. The edge to switch1 pulsed yellow briefly when the sensor
+      //     read fired (re-run with `__mforthViz.onEvent("SensorReadEvent", ...)` to retrigger).
+      //  4. The event log lists all five events with timestamps and payloads.
+    </script>
+  </body>
+</html>

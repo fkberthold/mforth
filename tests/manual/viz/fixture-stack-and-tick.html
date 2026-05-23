@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>mforth viz fixture: stack + tick</title>
+    <link rel="stylesheet" href="../../../src/mforth/viz/static/app.css" />
+  </head>
+  <body>
+    <header id="mforth-header">
+      <h1>mforth — fixture: stack + tick</h1>
+      <div id="mforth-controls" role="toolbar">
+        <button id="mforth-ctrl-pause" type="button" data-cmd="pause">pause</button>
+        <button id="mforth-ctrl-resume" type="button" data-cmd="resume">resume</button>
+        <button id="mforth-ctrl-step" type="button" data-cmd="step">step</button>
+        <span id="mforth-ctrl-ack"></span>
+      </div>
+      <div id="mforth-meta">
+        <span class="meta-label">tick</span>
+        <span id="mforth-tick">0</span>
+        <span id="mforth-status" data-state="disconnected">offline</span>
+      </div>
+    </header>
+    <main id="mforth-panes">
+      <section id="mforth-world-pane"><h2>World</h2>
+        <svg id="mforth-world-svg" viewBox="-100 -100 200 200">
+          <g id="mforth-world-edges"></g><g id="mforth-world-nodes"></g>
+          <circle id="mforth-world-processor" cx="0" cy="0" r="8"></circle>
+          <text id="mforth-world-processor-label" x="0" y="22" text-anchor="middle">processor</text>
+        </svg>
+        <div id="mforth-world-empty" data-empty>(no links)</div>
+      </section>
+      <section id="mforth-block-detail" data-collapsed="true">
+        <h2>Block detail <button id="mforth-block-close">x</button></h2>
+        <div id="mforth-block-empty" data-empty>(no selection)</div>
+        <div id="mforth-block-body" hidden>
+          <div class="block-head"><span id="mforth-block-name"></span><span id="mforth-block-type"></span></div>
+          <pre id="mforth-block-state"></pre>
+        </div>
+      </section>
+      <section id="mforth-forth-pane"><h2>Forth</h2><pre id="mforth-forth-source"></pre></section>
+      <section id="mforth-stack-pane"><h2>Stack (top at bottom)</h2><ol id="mforth-stack-list"></ol></section>
+    </main>
+    <section id="mforth-event-log" data-collapsed="false">
+      <h2>
+        <button id="mforth-log-toggle">[-]</button>
+        Event log
+        <label class="filter-label">filter <input id="mforth-log-filter" type="text" /></label>
+        <button id="mforth-log-clear">clear</button>
+      </h2>
+      <ol id="mforth-log-list"></ol>
+    </section>
+    <script>
+      window.WebSocket = function () { this.readyState = 0; this.close = function(){}; this.send = function(){}; this.addEventListener = function(){}; };
+      window.WebSocket.OPEN = 1;
+    </script>
+    <script src="../../../src/mforth/viz/static/app.js"></script>
+    <script>
+      const v = window.__mforthViz;
+      // Source plumbed in snapshot (forward-compat with bead .22).
+      v.dispatch({
+        type: "snapshot",
+        world_state: {
+          tick: 0,
+          variables: {},
+          links: {},
+          source: { file: "examples/counter.fs", text: ": main 0 BEGIN 1 + DUP 10 < WHILE REPEAT ;\nmain\n" },
+        },
+      });
+      // Push values onto the stack via VariableWriteEvent (s0..sN convention).
+      v.dispatch({ type: "event", event_type: "VariableWriteEvent", payload: { timestamp: 0.1, name: "s0", value: 11 } });
+      v.dispatch({ type: "event", event_type: "VariableWriteEvent", payload: { timestamp: 0.2, name: "s1", value: 22 } });
+      v.dispatch({ type: "event", event_type: "VariableWriteEvent", payload: { timestamp: 0.3, name: "s2", value: 33 } });
+      // Advance tick via WaitEvent — verifies the prominent tick display.
+      v.dispatch({ type: "event", event_type: "WaitEvent", payload: { timestamp: 1.0, seconds: 0.7 } });
+      v.dispatch({ type: "event", event_type: "WaitEvent", payload: { timestamp: 2.5, seconds: 1.5 } });
+      // (file,line,col) highlight on the Forth pane.
+      v.dispatch({ type: "event", event_type: "WaitEvent", payload: { timestamp: 2.5, file: "examples/counter.fs", line: 2, col: 0 } });
+      // Manual checks:
+      //  1. Stack pane shows s2=33 at the BOTTOM (top-of-stack); s0=11 at top.
+      //  2. The bottom-most item has the "← top" marker and accent border.
+      //  3. Tick counter in the header reads "2.5" (or "2.500") after the
+      //     two WaitEvents.
+      //  4. The Forth pane shows the two-line source; line 2 (`main`) is
+      //     highlighted with the warning bar.
+    </script>
+  </body>
+</html>

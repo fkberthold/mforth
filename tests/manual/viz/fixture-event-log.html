@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>mforth viz fixture: event log</title>
+    <link rel="stylesheet" href="../../../src/mforth/viz/static/app.css" />
+  </head>
+  <body>
+    <header id="mforth-header">
+      <h1>mforth — fixture: event log</h1>
+      <div id="mforth-controls" role="toolbar">
+        <button id="mforth-ctrl-pause" type="button" data-cmd="pause">pause</button>
+        <button id="mforth-ctrl-resume" type="button" data-cmd="resume">resume</button>
+        <button id="mforth-ctrl-step" type="button" data-cmd="step">step</button>
+        <span id="mforth-ctrl-ack"></span>
+      </div>
+      <div id="mforth-meta">
+        <span class="meta-label">tick</span>
+        <span id="mforth-tick">0</span>
+        <span id="mforth-status" data-state="disconnected">offline</span>
+      </div>
+    </header>
+    <main id="mforth-panes">
+      <section id="mforth-world-pane"><h2>World</h2>
+        <svg id="mforth-world-svg" viewBox="-100 -100 200 200">
+          <g id="mforth-world-edges"></g><g id="mforth-world-nodes"></g>
+          <circle id="mforth-world-processor" cx="0" cy="0" r="8"></circle>
+          <text id="mforth-world-processor-label" x="0" y="22" text-anchor="middle">processor</text>
+        </svg>
+        <div id="mforth-world-empty" data-empty>(no links)</div>
+      </section>
+      <section id="mforth-block-detail" data-collapsed="true">
+        <h2>Block detail <button id="mforth-block-close">x</button></h2>
+        <div id="mforth-block-empty" data-empty>(no selection)</div>
+        <div id="mforth-block-body" hidden>
+          <div class="block-head"><span id="mforth-block-name"></span><span id="mforth-block-type"></span></div>
+          <pre id="mforth-block-state"></pre>
+        </div>
+      </section>
+      <section id="mforth-forth-pane"><h2>Forth</h2><pre id="mforth-forth-source"></pre></section>
+      <section id="mforth-stack-pane"><h2>Stack</h2><ol id="mforth-stack-list"></ol></section>
+    </main>
+    <section id="mforth-event-log" data-collapsed="false">
+      <h2>
+        <button id="mforth-log-toggle">[-]</button>
+        Event log
+        <label class="filter-label">filter <input id="mforth-log-filter" type="text" /></label>
+        <button id="mforth-log-clear">clear</button>
+      </h2>
+      <ol id="mforth-log-list"></ol>
+    </section>
+    <script>
+      window.WebSocket = function () { this.readyState = 0; this.close = function(){}; this.send = function(){}; this.addEventListener = function(){}; };
+      window.WebSocket.OPEN = 1;
+    </script>
+    <script src="../../../src/mforth/viz/static/app.js"></script>
+    <script>
+      const v = window.__mforthViz;
+      v.dispatch({ type: "snapshot", world_state: { tick: 0, variables: {}, links: {} } });
+      // Fire 60 events of varied types — should scroll, all visible until filtered.
+      for (let i = 0; i < 20; i++) {
+        v.dispatch({ type: "event", event_type: "WaitEvent",          payload: { timestamp: i * 0.1, seconds: 0.05 } });
+        v.dispatch({ type: "event", event_type: "MessagePrintEvent",  payload: { timestamp: i * 0.1, text: `chunk-${i}` } });
+        v.dispatch({ type: "event", event_type: "SensorReadEvent",    payload: { timestamp: i * 0.1, block_name: `sensor${i % 3}`, prop: "@enabled", value: i % 2 } });
+      }
+      // Forward-compat: an unknown event_type still shows up in the log.
+      v.dispatch({ type: "event", event_type: "FutureEvent_v2",       payload: { timestamp: 99, foo: "bar", n: 7 } });
+      // Control-ack flash.
+      v.dispatch({ type: "control_ack", cmd: "pause" });
+      // Manual checks:
+      //  1. Event log scrolled — most recent event visible at the bottom.
+      //  2. Type "Sensor" into the filter box — only SensorReadEvent rows
+      //     remain visible. Clear the filter — all rows return.
+      //  3. The FutureEvent_v2 row is visible (forward-compat guarantee).
+      //  4. Click "clear" — log empties.
+      //  5. Click "[-]" — log collapses to a 2rem strip; click again to
+      //     expand. Header label updates to "[+]" / "[-]".
+      //  6. Click pause/resume/step in the header — "ack: <cmd>" flashes
+      //     in the toolbar (the stubbed WebSocket swallows the send, so
+      //     verify ack via re-dispatching {type:'control_ack', cmd:...}
+      //     by hand from devtools).
+    </script>
+  </body>
+</html>

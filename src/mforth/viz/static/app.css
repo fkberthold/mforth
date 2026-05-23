@@ -1,22 +1,51 @@
-/* Stub viz styles (bead mforth-10t.20).
+/* mforth web visualizer styles (bead mforth-10t.21).
  *
- * The real layout lands in bead mforth-10t.21. These rules just keep
- * the shell legible for manual inspection during the .20 → .21 gap.
+ * Single-file CSS, no preprocessor. Dark monospace shell consistent
+ * with the .20 stub. CSS grid lays the four main panes out 2x2 with
+ * the event log as a separate full-width strip below.
  */
+
+:root {
+  --bg: #111;
+  --bg-pane: #1a1a1a;
+  --bg-pane-2: #202020;
+  --border: #333;
+  --fg: #eee;
+  --fg-dim: #999;
+  --fg-empty: #666;
+  --accent: #6cf;
+  --accent-warn: #fc6;
+  --accent-good: #6c6;
+  --accent-bad: #c66;
+  --edge: #555;
+  --edge-pulse: #fc6;
+  --node: #6cf;
+  --node-sel: #fc6;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
 
 body {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   margin: 0;
-  background: #111;
-  color: #eee;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 13px;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
 }
+
+/* ---- header ---- */
 
 #mforth-header {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 0.5rem 1rem;
-  border-bottom: 1px solid #333;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.4rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-pane);
 }
 
 #mforth-header h1 {
@@ -25,31 +54,272 @@ body {
   letter-spacing: 0.05em;
 }
 
-#mforth-status[data-state="disconnected"] {
-  color: #c66;
+#mforth-controls {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
 }
 
-#mforth-status[data-state="connected"] {
-  color: #6c6;
+#mforth-controls button {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 0.2rem 0.6rem;
+  font: inherit;
+  cursor: pointer;
 }
+
+#mforth-controls button:hover { border-color: var(--accent); }
+#mforth-controls button:active { background: var(--accent); color: var(--bg); }
+
+#mforth-ctrl-ack {
+  color: var(--accent);
+  min-width: 6ch;
+  font-size: 0.85em;
+}
+
+#mforth-meta {
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.meta-label { color: var(--fg-dim); text-transform: uppercase; font-size: 0.75em; letter-spacing: 0.1em; }
+
+#mforth-tick {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.1rem;
+  color: var(--accent);
+}
+
+#mforth-status[data-state="disconnected"] { color: var(--accent-bad); }
+#mforth-status[data-state="connecting"]   { color: var(--accent-warn); }
+#mforth-status[data-state="connected"]    { color: var(--accent-good); }
+
+/* ---- main pane grid ---- */
 
 #mforth-panes {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  padding: 1rem;
+  grid-template-rows: 1fr 1fr;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  min-height: 0;
 }
 
-#mforth-panes section {
-  background: #1a1a1a;
-  border: 1px solid #333;
-  padding: 0.75rem;
+#mforth-panes > section {
+  background: var(--bg-pane);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 #mforth-panes h2 {
-  margin: 0 0 0.5rem 0;
-  font-size: 0.85rem;
-  color: #999;
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--fg-dim);
   text-transform: uppercase;
   letter-spacing: 0.1em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
+
+[data-empty] { color: var(--fg-empty); font-style: italic; padding: 0.5rem; }
+.hint { color: var(--fg-dim); text-transform: none; letter-spacing: 0; font-size: 0.85em; }
+
+/* ---- world pane ---- */
+
+#mforth-world-pane { position: relative; }
+
+#mforth-world-svg {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  display: block;
+}
+
+#mforth-world-empty {
+  position: absolute;
+  inset: 2.5rem 0 0 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+#mforth-world-svg.has-links + #mforth-world-empty { display: none; }
+
+#mforth-world-processor { fill: var(--accent); stroke: var(--fg); stroke-width: 0.5; }
+#mforth-world-processor-label { fill: var(--fg-dim); font-size: 5px; font-family: inherit; }
+
+.world-edge { stroke: var(--edge); stroke-width: 0.8; transition: stroke 0.2s, stroke-width 0.2s; }
+.world-edge.pulse { stroke: var(--edge-pulse); stroke-width: 1.8; }
+
+.world-node {
+  fill: var(--node);
+  stroke: var(--fg);
+  stroke-width: 0.5;
+  cursor: pointer;
+  transition: fill 0.2s;
+}
+.world-node:hover { fill: var(--accent-warn); }
+.world-node.selected { fill: var(--node-sel); stroke-width: 1; }
+.world-node-label {
+  fill: var(--fg);
+  font-size: 4px;
+  font-family: inherit;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+/* ---- block-detail pane ---- */
+
+#mforth-block-detail h2 { justify-content: space-between; }
+
+#mforth-block-close {
+  background: transparent;
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  padding: 0 0.4rem;
+  font: inherit;
+  cursor: pointer;
+}
+#mforth-block-close:hover { color: var(--fg); border-color: var(--accent); }
+
+#mforth-block-detail[data-collapsed="true"] #mforth-block-body { display: none; }
+#mforth-block-detail[data-collapsed="false"] #mforth-block-empty { display: none; }
+
+.block-head {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+#mforth-block-name { color: var(--accent); }
+#mforth-block-type { color: var(--fg-dim); }
+
+#mforth-block-state {
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  overflow: auto;
+  flex: 1 1 auto;
+  font-size: 0.85em;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---- forth pane ---- */
+
+#mforth-forth-source {
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  overflow: auto;
+  flex: 1 1 auto;
+  font-size: 0.85em;
+  line-height: 1.4;
+  white-space: pre;
+}
+.forth-line { display: block; padding: 0 0.25rem; }
+.forth-line.current { background: rgba(255, 204, 102, 0.15); border-left: 2px solid var(--accent-warn); padding-left: 0.5rem; }
+.forth-line-no { color: var(--fg-empty); margin-right: 0.75rem; user-select: none; }
+
+/* ---- stack pane ---- */
+
+#mforth-stack-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem;
+  overflow: auto;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column-reverse; /* top of stack at bottom */
+  gap: 0.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+#mforth-stack-list li {
+  padding: 0.15rem 0.5rem;
+  background: var(--bg-pane-2);
+  border: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+}
+#mforth-stack-list li.top { border-color: var(--accent); }
+#mforth-stack-list li.top::after { content: " <- top"; color: var(--accent); }
+#mforth-stack-list li[data-empty] {
+  background: transparent;
+  border: none;
+  justify-content: flex-start;
+}
+
+/* ---- event log (collapsible) ---- */
+
+#mforth-event-log {
+  background: var(--bg-pane);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  max-height: 30vh;
+  min-height: 2rem;
+}
+
+#mforth-event-log h2 {
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+#mforth-event-log[data-collapsed="true"] #mforth-log-list { display: none; }
+#mforth-event-log[data-collapsed="true"] { max-height: 2rem; }
+
+.filter-label { display: flex; align-items: center; gap: 0.3rem; text-transform: none; letter-spacing: 0; font-size: 0.85em; color: var(--fg-dim); }
+.filter-label input {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  font: inherit;
+  padding: 0.1rem 0.3rem;
+  width: 18ch;
+}
+
+#mforth-log-toggle, #mforth-log-clear {
+  background: transparent;
+  color: var(--fg-dim);
+  border: 1px solid var(--border);
+  padding: 0 0.4rem;
+  font: inherit;
+  cursor: pointer;
+}
+#mforth-log-toggle:hover, #mforth-log-clear:hover { color: var(--fg); border-color: var(--accent); }
+
+#mforth-log-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0.5rem;
+  overflow: auto;
+  flex: 1 1 auto;
+  font-size: 0.85em;
+}
+
+#mforth-log-list li {
+  display: grid;
+  grid-template-columns: 8ch 16ch 1fr;
+  gap: 0.5rem;
+  padding: 0.1rem 0;
+  border-bottom: 1px dotted #222;
+}
+#mforth-log-list .log-time { color: var(--fg-empty); font-variant-numeric: tabular-nums; }
+#mforth-log-list .log-type { color: var(--accent); }
+#mforth-log-list .log-payload { color: var(--fg); white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+#mforth-log-list li.hidden { display: none; }
