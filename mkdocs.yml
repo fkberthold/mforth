@@ -1,0 +1,77 @@
+site_name: mforth
+site_description: A pragmatic Forth dialect that compiles to Mindustry's mlog — host REPL, AOT compiler, LSP, and tree-sitter grammar, sharing one analyzer.
+repo_url: https://github.com/fkberthold/mforth
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.tracking
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - include-markdown:
+      exclude:
+        - "**/internal/**"
+        - "**/*.draft.md"
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Tutorials:
+      - tutorials/index.md
+      - Getting started: tutorials/getting-started.md
+  - How-to:
+      - how-to/index.md
+      - Install: how-to/install.md
+      - Use with Helix: how-to/use-with-helix.md
+  - Reference:
+      - reference/index.md
+  - Explanation:
+      - explanation/index.md
+      - Mental model: explanation/mental-model.md
