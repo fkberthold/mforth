@@ -43,6 +43,14 @@ These are not optional. Even 1% chance a skill applies → invoke it.
 - **v1 stays cell-free.** Data stack lives in mlog variables (`s0..sN`); no return stack (inline everything); user `VARIABLE` compiles to bare mlog variables. v1 demos (blink, counter, single-processor controllers) never touch a memory cell. Cells re-enter only for v2 + recursion (not in our dialect anyway), inter-processor IPC, large lookup tables, or persistence across processor disable.
 - **`@counter` is writable in mlog.** This is the lever for v2 subroutine emission (caller saves return address; sets `@counter` to entry; callee ends with `set @counter <return-addr-var>`). Also enables jump-table dispatch via `op add @counter @counter <offset>`. Don't forget this when reading the mlog reference drawer.
 
+### REPL ↔ mlog convergence decisions (mforth-2i1, 2026-05-23)
+
+Three deliberate divergence-resolution choices that keep the headline equivalence property holding. All three are pinned by unit tests + equivalence fixtures; any future regression flips the equivalence-on-demos tests in `tests/integration/test_blink_counter.py`.
+
+- **Forth `/` emits mlog `op div` (float division), NOT `op idiv`.** The host REPL primitive uses Python's `/` (float division); the mlog backend now matches. Forth tradition prefers integer `/`; mforth's pragmatic dialect explicitly chooses the Python-natural feel of the REPL over Forth tradition. See `src/mforth/backend/mlog/emit.py` (`_BINARY_OP_MAP["/"]`) and bead `mforth-dlr`.
+- **mlog interpreter emits `VariableReadEvent` / `VariableWriteEvent` for `UserVariable` reads/writes.** Matches the REPL's `world.read_variable` / `world.write_variable` instrumentation. The interpreter takes a `user_variables: set[str]` constructor parameter — names of source-declared `VARIABLE foo` (NOT sidecar-pre-seeded link names, which are block-name handles the REPL never instruments). Compiler-internal names (`s<i>` stack slots, `__swap_tmp`, `@`-prefixed magic vars) bypass instrumentation. See `src/mforth/mlog_interp.py` (`_read` / `_write`) and bead `mforth-0qi`.
+- **PRINT renders integer-valued floats WITHOUT a trailing `.0`.** Matches the in-game `print` instruction's stringification rule (whole-number doubles render as integers). The host PRINT primitive applies `str(int(x)) if isinstance(x, float) and x.is_integer() else str(x)` — same rule the mlog interpreter already used in `_format_for_print`. See `src/mforth/backend/primitives.py` (`_print`) and bead `mforth-05h`.
+
 ## Worktree default
 
 Non-trivial work happens in an isolated git worktree under `.worktrees/<task-id>/`, never directly on `main`. The directory is gitignored. `superpowers:using-git-worktrees` covers the choreography.

@@ -164,7 +164,14 @@ _BINARY_OP_MAP: dict[str, str] = {
     "+": "add",
     "-": "sub",
     "*": "mul",
-    "/": "idiv",  # Forth tradition: integer divide
+    # mforth-dlr (2026-05-23): Forth `/` emits mlog `op div` (float
+    # division), NOT `op idiv` (integer). The host REPL primitive uses
+    # Python's `/` which is float division, so emitting `idiv` here
+    # diverged on every program using `/` and violated CLAUDE.md's
+    # headline REPL ↔ mlog equivalence property. Documented divergence
+    # from Forth tradition (which uses integer `/`) — mforth's pragmatic
+    # dialect choice favors the Python-natural feel of the REPL.
+    "/": "div",
     "MOD": "mod",
     # Comparison — mlog's 0/1 result is kept verbatim (see docstring)
     "=": "equal",

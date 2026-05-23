@@ -138,6 +138,53 @@ def test_print_coerces_numeric_arg_via_str():
 
 
 # ---------------------------------------------------------------------------
+# mforth-05h — PRINT renders integer-valued floats WITHOUT a trailing ".0".
+#
+# In-game mlog `print` stringifies whole-number doubles as integers
+# ("1" not "1.0"); the in-repo mlog interpreter mirrors that via
+# `mforth.mlog_interp._format_for_print`. Before this fix the host
+# PRINT primitive str()'d the value verbatim, so a Python float on the
+# stack (e.g. result of `1 +` after a counter read that came back as
+# float via VariableReadEvent → 1.0) rendered as "1.0" — diverging
+# from mlog on every numeric PRINT.
+# ---------------------------------------------------------------------------
+
+
+def test_print_integer_valued_float_renders_without_decimal():
+    """Pushing the float 1.0 then PRINTing must emit text "1", matching
+    the in-game `print` behavior and the mlog interpreter."""
+    # The lex-time literal `1` produces an int, not a float. To test the
+    # float-shaped path we need a real Python float on the stack. Use
+    # `1 1 /` — both operands int, but `/` is float division so the
+    # result is the float 1.0.
+    world = MockWorld()
+    run([lit(1), lit(1), call("/"), call("PRINT")], world=world)
+    prints = [e for e in world.events if isinstance(e, MessagePrintEvent)]
+    assert prints[0].text == "1", (
+        f"integer-valued float must render without .0; got {prints[0].text!r}"
+    )
+
+
+def test_print_non_integer_float_keeps_decimal():
+    """Pushing 2.5 must still print as "2.5" — the rule only strips .0
+    from integer-valued floats."""
+    world = MockWorld()
+    run([lit(5), lit(2), call("/"), call("PRINT")], world=world)
+    prints = [e for e in world.events if isinstance(e, MessagePrintEvent)]
+    assert prints[0].text == "2.5"
+
+
+def test_print_int_literal_renders_as_int():
+    """Pushing a true int literal (no float coercion) must render as
+    that int's string — regression guard so the new branch doesn't
+    accidentally re-route int values through float coercion."""
+    world = MockWorld()
+    run([lit(42), call("PRINT")], world=world)
+    prints = [e for e in world.events if isinstance(e, MessagePrintEvent)]
+    assert prints[0].text == "42"
+
+
+# ---------------------------------------------------------------------------
 # PRINTFLUSH — ( block -- ) → world.printflush → MessagePrintflushEvent
 # ---------------------------------------------------------------------------
 
