@@ -1,0 +1,21 @@
+# CONTROL block-instruction equivalence fixture (bead mforth-cto).
+# Three links: a switch (the conveyor target), a generic block (the
+# sorter target), and a message block (the status display, Mode A
+# substituted to message1 in compiled mlog).
+
+[links.cv1]
+type    = "switch"
+target  = "switch1"
+enabled = false
+
+[links.sorter1]
+type   = "generic"
+target = "sorter1"
+
+[links.display]
+type   = "message"
+target = "message1"
+
+[clock]
+ipt      = 8
+realtime = false

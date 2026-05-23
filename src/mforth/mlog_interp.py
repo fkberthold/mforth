@@ -627,6 +627,59 @@ def _h_getlink(interp: MlogInterpreter, operands: list) -> bool:
     return True
 
 
+_CONTROL_SUBCOMMAND_ARITY: dict[str, int] = {
+    # sub-command name → number of meaningful args after the block (the
+    # rest are zero-padded operands the emitter inserts to fill mlog's
+    # 5-slot control instruction shape).
+    "enabled": 1,
+    "config": 1,
+    "shoot": 3,
+    "shootp": 2,
+    "color": 3,
+}
+
+
+def _h_control(interp: MlogInterpreter, operands: list) -> bool:
+    """`control <sub> <block> <a> <b> <c> <d>` (bead mforth-cto).
+
+    Dispatches the sub-command to :meth:`MockWorld.control`. Unknown
+    sub-commands raise :class:`MlogInterpError` so a typo'd emit
+    surfaces loudly rather than silently no-op'ing.
+    """
+    if not operands:
+        raise MlogInterpError("control: missing sub-command")
+    sub = operands[0]
+    if sub not in _CONTROL_SUBCOMMAND_ARITY:
+        raise MlogInterpError(
+            f"unimplemented control sub-command {sub!r} "
+            f"(known: {sorted(_CONTROL_SUBCOMMAND_ARITY)})"
+        )
+    if len(operands) < 2:
+        raise MlogInterpError(f"control {sub}: missing block operand")
+    block_token = operands[1]
+    block_value = interp._read(block_token)
+    if isinstance(block_value, str) and block_value:
+        block_name = block_value
+    elif block_value == 0:
+        # Unbound bare name — use the operand token directly (matches
+        # the printflush bare-name fallback path).
+        block_name = block_token
+    else:
+        block_name = str(block_value)
+    arity = _CONTROL_SUBCOMMAND_ARITY[sub]
+    # Resolve each meaningful arg via _read so bare names + numerics +
+    # quoted strings all work. Trailing zero-padding operands are
+    # ignored to keep the ControlEvent.args tuple shape consistent
+    # with the host primitive.
+    args = tuple(
+        interp._read(operands[2 + k])
+        for k in range(arity)
+        if 2 + k < len(operands)
+    )
+    interp.world.control(sub, block_name, *args)
+    return True
+
+
 def _h_read(_interp, _operands) -> bool:
     raise MlogInterpError(
         "mlog `read` (memory cell) not supported in v1 — "
@@ -650,6 +703,7 @@ _DISPATCH = {
     "wait": _h_wait,
     "sensor": _h_sensor,
     "getlink": _h_getlink,
+    "control": _h_control,
     "read": _h_read,
     "write": _h_write,
 }
