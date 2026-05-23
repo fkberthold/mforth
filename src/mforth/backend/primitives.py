@@ -430,6 +430,78 @@ _PRIMITIVES: dict[str, PrimitiveFn] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Mindustry @-identifier primitives (bead mforth-eaz)
+#
+# Each is a `(-- value)` push. Two flavors:
+#
+#   * Magic vars push a deterministic stub from
+#     `dictionary.MINDUSTRY_MAGIC_STUBS` (0/0.0/known constants). The mlog
+#     interpreter pre-seeds the SAME stubs so REPL ↔ mlog equivalence
+#     holds even though Mindustry's runtime values are non-deterministic.
+#
+#   * Content names + sensor properties + tile sentinels push their bare
+#     `@name` string as an opaque tag — matches the .12 block-handle
+#     "bare string" convention. SENSOR pops the tag and forwards it to
+#     `world.sensor(block, prop)`.
+#
+# Aliases (e.g. `@ticks` → `@tick`) resolve at the dictionary level —
+# both look up the same BuiltinWord object, so `Executor._run_word_call`
+# uses the entry's canonical `.name` to look up the primitive and both
+# alias routes hit the same callable.
+# ---------------------------------------------------------------------------
+
+
+def _make_magic_push(name: str, value: object) -> PrimitiveFn:
+    """Build a `(-- value)` primitive that pushes the deterministic stub
+    for magic var `name`."""
+
+    def push(ex: "Executor") -> None:
+        ex.data_stack.append(value)
+
+    push.__name__ = f"_push_magic_{name.lstrip('@')}"
+    push.__doc__ = f"`{name}` — push deterministic stub value ({value!r})."
+    return push
+
+
+def _make_tag_push(name: str) -> PrimitiveFn:
+    """Build a `(-- tag)` primitive that pushes the bare `@name` string
+    as an opaque tag (matches the .12 block-handle convention)."""
+
+    def push(ex: "Executor") -> None:
+        ex.data_stack.append(name)
+
+    push.__name__ = f"_push_tag_{name.lstrip('@').replace('-', '_')}"
+    push.__doc__ = f"`{name}` — push bare tag string."
+    return push
+
+
+def _build_mindustry_primitives() -> dict[str, PrimitiveFn]:
+    """Build the full Mindustry @-identifier primitive table.
+
+    Walks the dictionary's `_MINDUSTRY_IDENTIFIERS` registry so the
+    host side cannot drift from the dictionary side — every entry the
+    dictionary knows about gets a host primitive here.
+    """
+    from mforth.dictionary import (  # local to avoid an import cycle
+        MINDUSTRY_MAGIC_STUBS,
+        _MINDUSTRY_IDENTIFIERS,
+    )
+
+    table: dict[str, PrimitiveFn] = {}
+    for entry in _MINDUSTRY_IDENTIFIERS:
+        name = entry.name
+        if entry.tag == "mindustry-magic":
+            stub = MINDUSTRY_MAGIC_STUBS.get(name)
+            table[name] = _make_magic_push(name, stub)
+        else:
+            table[name] = _make_tag_push(name)
+    return table
+
+
+_MINDUSTRY_IDENT_PRIMITIVES: dict[str, PrimitiveFn] = _build_mindustry_primitives()
+
+
 def register_all(executor: "Executor") -> None:
     """Register every built-in implemented in this module onto `executor`.
 
@@ -447,11 +519,16 @@ def register_all(executor: "Executor") -> None:
     stack are bare mforth-name strings (see the module docstring's
     "Block-handle representation" section).
 
+    Bead mforth-eaz adds the 154 Mindustry @-identifier push primitives
+    (magic vars + content names + sensor props + tile sentinels).
+
     VARIABLE is NOT in the table — the executor handles the literal
     `WordCall("VARIABLE")` directly to consume the next term as the
     declared variable name.
     """
     for name, fn in _PRIMITIVES.items():
+        executor.register_primitive(name, fn)
+    for name, fn in _MINDUSTRY_IDENT_PRIMITIVES.items():
         executor.register_primitive(name, fn)
 
 

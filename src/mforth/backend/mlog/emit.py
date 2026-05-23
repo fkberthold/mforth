@@ -202,6 +202,23 @@ _MINDUSTRY_PRIMITIVES: frozenset[str] = frozenset({
 })
 
 
+# Bead mforth-eaz: every BuiltinWord whose tag is in this set AND whose
+# name starts with "@" is a 0-in/1-out @-identifier (magic var, content
+# name, sensor prop, or tile sentinel). Standalone emit: `set s<i>
+# @name`. Lifting fast path: when one such word immediately precedes
+# SENSOR / PRINTFLUSH / PRINT, the bare @name folds into the operand
+# and the otherwise-required `set s<i> @name` is elided. See
+# `_emit_at_identifier_slot_form` and `_try_lift_mindustry_primitive`.
+_MINDUSTRY_AT_TAGS: frozenset[str] = frozenset({
+    "mindustry-magic",
+    "mindustry-item",
+    "mindustry-liquid",
+    "mindustry-unit",
+    "mindustry-block",
+    "mindustry-sensor-prop",
+})
+
+
 # Primitives whose operand positions accept a *bare* mlog identifier
 # (no quotes) when a LitStr immediately precedes them at compile time.
 # The lifting pass strips outer quotes for these positions.  Cross-ref
@@ -620,6 +637,24 @@ class _Emitter:
             self._emit(out, "set", (rw.writes[0], f"__do_idx_{loop_n}"))
             return None
 
+        # Mindustry @-identifier (magic var / content / sensor-prop /
+        # tile sentinel) — bead mforth-eaz. Slot-form push: read the bare
+        # `@name` into the next stack slot. The lifting fast path in
+        # `_try_lift_mindustry_primitive` handles the common case where
+        # the @-identifier feeds straight into SENSOR / PRINTFLUSH /
+        # PRINT; reaching this arm means the value is being consumed by
+        # something else (arithmetic, a stack op, etc.) and needs to
+        # actually land in a slot.
+        if (
+            isinstance(entry, BuiltinWord)
+            and entry.tag in _MINDUSTRY_AT_TAGS
+            and entry.name.startswith("@")
+        ):
+            self._guard_no_pending(pending_var, term)
+            rw = self._rw(term, slot_rewrite)
+            self._emit(out, "set", (rw.writes[0], entry.name))
+            return None
+
         # User-definition call — inline the body with offset rewriting.
         if isinstance(entry, Definition):
             self._guard_no_pending(pending_var, term)
@@ -869,6 +904,99 @@ class _Emitter:
             and is_primitive(i + 1, "PRINT")
         ):
             self._emit(out, "print", (uvname,))
+            return 2
+
+        # Bead mforth-eaz: Mindustry @-identifier lifting — parallel to
+        # the LinkRef-uservar lifts above. Lets `<block> @copper SENSOR`,
+        # `@message1 PRINTFLUSH`, `@time PRINT` all fold to single
+        # instructions with bare `@name` operands and no preceding `set`.
+        def is_at_identifier(k: int) -> Optional[str]:
+            """Return the @-identifier's name if body[k] is one, else None."""
+            if k >= len(body):
+                return None
+            t = body[k]
+            if not isinstance(t, WordCall):
+                return None
+            entry = self.dictionary.lookup(t.name)
+            if (
+                isinstance(entry, BuiltinWord)
+                and entry.tag in _MINDUSTRY_AT_TAGS
+                and entry.name.startswith("@")
+            ):
+                return entry.name
+            return None
+
+        # SENSOR: 3-term `<link-uservar> <@-prop> SENSOR`.
+        if (
+            i + 2 < len(body)
+            and (uvname := is_uservar(i)) is not None
+            and (atprop := is_at_identifier(i + 1)) is not None
+            and is_primitive(i + 2, "SENSOR")
+        ):
+            sensor = body[i + 2]
+            rw = self._rw(sensor, slot_rewrite)
+            self._emit(out, "sensor", (rw.writes[0], uvname, atprop))
+            return 3
+
+        # SENSOR: 3-term `<@-block> <@-prop> SENSOR` (both lift). Two
+        # @-identifiers folded into one instruction.
+        if (
+            i + 2 < len(body)
+            and (atblock := is_at_identifier(i)) is not None
+            and (atprop := is_at_identifier(i + 1)) is not None
+            and is_primitive(i + 2, "SENSOR")
+        ):
+            sensor = body[i + 2]
+            rw = self._rw(sensor, slot_rewrite)
+            self._emit(out, "sensor", (rw.writes[0], atblock, atprop))
+            return 3
+
+        # SENSOR: 3-term `LitStr <@-prop> SENSOR` — block is a quoted
+        # string literal, prop is an @-identifier.
+        if (
+            i + 2 < len(body)
+            and isinstance(body[i], LitStr)
+            and (atprop := is_at_identifier(i + 1)) is not None
+            and is_primitive(i + 2, "SENSOR")
+        ):
+            block_value = body[i].value
+            sensor = body[i + 2]
+            rw = self._rw(sensor, slot_rewrite)
+            self._emit(out, "sensor", (rw.writes[0], block_value, atprop))
+            return 3
+
+        # SENSOR: 2-term tail `<@-prop> SENSOR` — block came from an
+        # earlier-emitted term (computed handle); only prop lifts.
+        if (
+            i + 1 < len(body)
+            and (atprop := is_at_identifier(i)) is not None
+            and is_primitive(i + 1, "SENSOR")
+        ):
+            sensor = body[i + 1]
+            rw = self._rw(sensor, slot_rewrite)
+            # reads = (block_slot, prop_slot); the prop_slot is the one
+            # the @-identifier would have written into — but the lift
+            # elides that write, so we use the bare @name directly.
+            self._emit(out, "sensor", (rw.writes[0], rw.reads[0], atprop))
+            return 2
+
+        # PRINTFLUSH: 2-term `<@-name> PRINTFLUSH`.
+        if (
+            i + 1 < len(body)
+            and (atname := is_at_identifier(i)) is not None
+            and is_primitive(i + 1, "PRINTFLUSH")
+        ):
+            self._emit(out, "printflush", (atname,))
+            return 2
+
+        # PRINT: 2-term `<@-name> PRINT` — mlog `print` accepts a bare
+        # identifier and prints the value of the variable.
+        if (
+            i + 1 < len(body)
+            and (atname := is_at_identifier(i)) is not None
+            and is_primitive(i + 1, "PRINT")
+        ):
+            self._emit(out, "print", (atname,))
             return 2
 
         return 0

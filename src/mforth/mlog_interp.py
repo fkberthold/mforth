@@ -339,6 +339,28 @@ class MlogInterpreter:
     def __post_init__(self) -> None:
         self.instructions = self._lex(self.text)
         self.variables.setdefault("@counter", 0)
+        # Pre-seed Mindustry magic-var stubs (bead mforth-eaz). Same
+        # deterministic values the host REPL's primitives push, so the
+        # REPL ↔ mlog equivalence property holds: `@time` read on the
+        # interpreter side yields the same 0.0 the host pushes from
+        # `MINDUSTRY_MAGIC_STUBS`. Bare-tag identifiers (content names,
+        # sensor props) are NOT pre-seeded — they only appear as bare
+        # operands in lifted instructions (e.g. `sensor s0 reactor
+        # @copper`), so the read path naturally falls through to the
+        # unbound default (the @-name string for arithmetic purposes is
+        # 0, but in sensor/print contexts the bare token is used as a
+        # tag, not read as a value).
+        from mforth.dictionary import MINDUSTRY_MAGIC_STUBS
+        for name, value in MINDUSTRY_MAGIC_STUBS.items():
+            self.variables.setdefault(name, value)
+        # Also pre-seed the bare-tag identifiers to themselves so a
+        # `print @copper` inside the interpreter renders "@copper"
+        # (matches mlog's "unknown global resolves to its own name"
+        # behavior for content references).
+        from mforth.dictionary import _MINDUSTRY_IDENTIFIERS
+        for entry in _MINDUSTRY_IDENTIFIERS:
+            if entry.tag != "mindustry-magic":
+                self.variables.setdefault(entry.name, entry.name)
 
     # ---- lexer ---------------------------------------------------------
 
