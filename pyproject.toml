@@ -8,15 +8,21 @@ version = "0.0.1"
 description = "Pragmatic Forth dialect that compiles to Mindustry mlog"
 requires-python = ">=3.11"
 authors = [{ name = "Frank Berthold" }]
-# Runtime deps kept intentionally minimal. `websockets` is the single
-# new addition for the bead .20 web viz HTTP+WS server — chosen over
-# FastAPI (which would pull starlette + pydantic + anyio) because the
-# viz needs exactly one push-only event stream + a small control
-# channel; the well-maintained `websockets` library is a clean,
-# stdlib-shaped fit. See src/mforth/viz/server.py module docstring
-# for the full library-choice rationale.
+# Runtime deps kept intentionally minimal. Two additions landed alongside
+# each other from the wave-3 parallel bead burst:
+#   * `websockets` — bead mforth-10t.20 web viz HTTP+WS server (chosen
+#     over FastAPI to avoid pulling starlette + pydantic + anyio; the
+#     viz needs one push-only event stream + a small control channel,
+#     which the well-maintained `websockets` library serves cleanly).
+#   * `pygls` — bead mforth-10t.23 LSP server (`mforth lsp`). Pinned to
+#     the 2.x series — pygls 2.0 introduced the lsprotocol-based API
+#     the server uses (`pygls.lsp.server.LanguageServer`,
+#     `@server.feature(...)`).
+# See the respective module docstrings for the full library-choice
+# rationale; this manifest is just the dependency list.
 dependencies = [
     "websockets>=12",
+    "pygls>=2.1,<3",
 ]
 
 [project.optional-dependencies]
