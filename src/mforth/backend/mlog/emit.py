@@ -310,6 +310,25 @@ class _Emitter:
         self.result = result
         self.slots = slot_map
         self.dictionary = result.dictionary
+        # Monotonic per-construct counters used to mint unique labels.
+        # See bead .17 — labels live in mlog's flat global line-address
+        # namespace, so the counter is program-global (not per-scope).
+        # Bead .19's line-resolver replaces label tokens with absolute
+        # 0-indexed line numbers; until then, labels appear in tuples'
+        # first slot ("attached to the next instruction") or as
+        # ``(label, None, None)`` sentinels when no instruction follows.
+        self._if_counter = 0
+        self._begin_counter = 0
+        self._do_counter = 0
+        # Pending labels queued by the control-flow arms; flushed onto
+        # the next emitted instruction by ``_emit`` (or as sentinels by
+        # ``_flush_pending_labels`` at block / program end).
+        self._pending_labels: list = []
+        # Active DO/LOOP nesting — innermost on top. Each entry is the
+        # DO instance counter ``N``; ``I`` reads ``__do_idx_<stack[-1]>``
+        # and ``J`` reads ``__do_idx_<stack[-2]>``. Per-N indexing means
+        # nested DO/LOOPs never collide on the counter variable.
+        self._loop_stack: list = []
 
     # ---- top-level ------------------------------------------------------
 
@@ -318,7 +337,41 @@ class _Emitter:
         # Definitions are not emitted in line — they expand at call sites.
         # Only `main` produces instructions at the top level.
         self._emit_body(out, self.result.program.main, slot_rewrite=None)
+        # Flush any labels that ended up trailing the last instruction in
+        # main (e.g. ``1 IF THEN`` has a ``L_if_0_end`` after the body).
+        self._flush_pending_labels(out)
         return out
+
+    # ---- label plumbing -------------------------------------------------
+
+    def _queue_label(self, label: str) -> None:
+        """Mark `label` to attach to the next emitted instruction.
+
+        Multiple labels can stack at the same position (degenerate
+        ``1 IF ELSE THEN`` puts ``L_if_0_else`` and ``L_if_0_end`` at
+        the same line). The flush rule in ``_emit`` keeps source order:
+        earlier-queued labels become sentinel tuples preceding the
+        instruction; the latest-queued label attaches to it. When no
+        instruction follows, all pending labels are emitted as sentinels.
+        """
+        self._pending_labels.append(label)
+
+    def _emit(self, out: list, opcode: str, operands: tuple) -> None:
+        """Emit one instruction, attaching pending labels per the rule
+        in ``_queue_label``."""
+        if self._pending_labels:
+            for lab in self._pending_labels[:-1]:
+                out.append((lab, None, None))
+            label = self._pending_labels[-1]
+            self._pending_labels = []
+        else:
+            label = None
+        out.append((label, opcode, operands))
+
+    def _flush_pending_labels(self, out: list) -> None:
+        for lab in self._pending_labels:
+            out.append((lab, None, None))
+        self._pending_labels = []
 
     # ---- body walker ----------------------------------------------------
 
@@ -367,14 +420,14 @@ class _Emitter:
         if isinstance(term, LitInt):
             self._guard_no_pending(pending_var, term)
             writes = self._rw(term, slot_rewrite).writes
-            out.append((None, "set", (writes[0], str(term.value))))
+            self._emit(out, "set", (writes[0], str(term.value)))
             return None
 
         if isinstance(term, LitStr):
             self._guard_no_pending(pending_var, term)
             writes = self._rw(term, slot_rewrite).writes
             # mlog string literals are inline-quoted; preserve the quotes.
-            out.append((None, "set", (writes[0], f'"{term.value}"')))
+            self._emit(out, "set", (writes[0], f'"{term.value}"'))
             return None
 
         if isinstance(term, VarRef):
@@ -383,9 +436,9 @@ class _Emitter:
             self._guard_no_pending(pending_var, term)
             rw = self._rw(term, slot_rewrite)
             if term.mode == "fetch":
-                out.append((None, "set", (rw.writes[0], term.name)))
+                self._emit(out, "set", (rw.writes[0], term.name))
             elif term.mode == "store":
-                out.append((None, "set", (term.name, rw.reads[0])))
+                self._emit(out, "set", (term.name, rw.reads[0]))
             else:
                 raise ValueError(f"unknown VarRef mode {term.mode!r}")
             return None
@@ -393,11 +446,20 @@ class _Emitter:
         if isinstance(term, WordCall):
             return self._emit_wordcall(out, term, slot_rewrite, pending_var)
 
-        if isinstance(term, (IfThen, Begin, DoLoop)):
-            raise NotImplementedError(
-                f"control flow ({type(term).__name__}) is not yet supported by "
-                f"the mlog emitter — see bead mforth-10t.17"
-            )
+        if isinstance(term, IfThen):
+            self._guard_no_pending(pending_var, term)
+            self._emit_if_then(out, term, slot_rewrite)
+            return None
+
+        if isinstance(term, Begin):
+            self._guard_no_pending(pending_var, term)
+            self._emit_begin(out, term, slot_rewrite)
+            return None
+
+        if isinstance(term, DoLoop):
+            self._guard_no_pending(pending_var, term)
+            self._emit_do_loop(out, term, slot_rewrite)
+            return None
 
         raise TypeError(f"unknown Term type {type(term).__name__}")
 
@@ -424,13 +486,13 @@ class _Emitter:
                 # ( addr -- value ): emit `set s<i> <name>`.  The slot
                 # allocator gave @ a read AND a write at the same slot;
                 # we want the write slot (where the value should land).
-                out.append((None, "set", (rw.writes[0], pending_var)))
+                self._emit(out, "set", (rw.writes[0], pending_var))
             else:  # "!"
                 # ( value addr -- ): emit `set <name> s<value-slot>`.
                 # The slot allocator gave ! reads = (value_slot, addr_slot)
                 # but we fused the addr-push so the addr_slot was never
                 # actually written; the value is in reads[0].
-                out.append((None, "set", (pending_var, rw.reads[0])))
+                self._emit(out, "set", (pending_var, rw.reads[0]))
             return None
 
         # VARIABLE declaration site — emits nothing.
@@ -451,14 +513,14 @@ class _Emitter:
             self._guard_no_pending(pending_var, term)
             mlog_op = _BINARY_OP_MAP[entry.name]
             rw = self._rw(term, slot_rewrite)
-            out.append((None, "op", (mlog_op, rw.writes[0], rw.reads[0], rw.reads[1])))
+            self._emit(out, "op", (mlog_op, rw.writes[0], rw.reads[0], rw.reads[1]))
             return None
 
         # NOT — unary; mlog `op not` takes (result, a, 0).
         if isinstance(entry, BuiltinWord) and entry.name == "NOT":
             self._guard_no_pending(pending_var, term)
             rw = self._rw(term, slot_rewrite)
-            out.append((None, "op", ("not", rw.writes[0], rw.reads[0], "0")))
+            self._emit(out, "op", ("not", rw.writes[0], rw.reads[0], "0"))
             return None
 
         # Stack ops.
@@ -467,19 +529,29 @@ class _Emitter:
             self._emit_stack_op(out, entry.name, self._rw(term, slot_rewrite))
             return None
 
-        # I / J — defer until DO/LOOP (.17) gives them meaning.  They
-        # appear in (0, 1) form in the dictionary so the slot allocator
-        # treats them as a plain push, but the underlying counter
-        # register lives in DO/LOOP codegen.  In a body that contains
-        # an I or J without an enclosing DO/LOOP, stackcheck won't have
-        # erred (it can't know), but the emitter can't produce sensible
-        # mlog without the DO/LOOP machinery.  Raise.
+        # I / J — read the active DO/LOOP counter into the next stack
+        # slot.  Bead .17 added the loop-stack tracking and the
+        # ``__do_idx_<N>`` per-instance counter variable.  Out-of-context
+        # use (I/J with no enclosing DO/LOOP, or J with only one) is a
+        # contract violation stackcheck can't catch — raise here so the
+        # error message names the word.
         if isinstance(entry, BuiltinWord) and entry.name in ("I", "J"):
             self._guard_no_pending(pending_var, term)
-            raise NotImplementedError(
-                f"DO/LOOP counter '{entry.name}' requires control-flow emission "
-                f"(bead mforth-10t.17)"
+            depth_needed = 1 if entry.name == "I" else 2
+            if len(self._loop_stack) < depth_needed:
+                raise NotImplementedError(
+                    f"DO/LOOP counter '{entry.name}' used outside the required "
+                    f"enclosing DO/LOOP context (need {depth_needed} active "
+                    f"loop(s), have {len(self._loop_stack)})"
+                )
+            loop_n = (
+                self._loop_stack[-1]
+                if entry.name == "I"
+                else self._loop_stack[-2]
             )
+            rw = self._rw(term, slot_rewrite)
+            self._emit(out, "set", (rw.writes[0], f"__do_idx_{loop_n}"))
+            return None
 
         # User-definition call — inline the body with offset rewriting.
         if isinstance(entry, Definition):
@@ -506,7 +578,7 @@ class _Emitter:
         if name == "DUP":
             # (1, 2): reads (s_top,), writes (s_top, s_top+1).  Emit
             # one set: writes[1] = reads[0].
-            out.append((None, "set", (writes[1], reads[0])))
+            self._emit(out, "set", (writes[1], reads[0]))
             return
 
         if name == "DROP":
@@ -516,39 +588,39 @@ class _Emitter:
         if name == "OVER":
             # (2, 3): reads (s_b, s_top), writes (s_b, s_top, s_new).
             # Emit one set: writes[2] = reads[0].
-            out.append((None, "set", (writes[2], reads[0])))
+            self._emit(out, "set", (writes[2], reads[0]))
             return
 
         if name == "NIP":
             # (2, 1): reads (s_b, s_top), writes (s_b,).
             # Emit one set: writes[0] = reads[1].
-            out.append((None, "set", (writes[0], reads[1])))
+            self._emit(out, "set", (writes[0], reads[1]))
             return
 
         if name == "SWAP":
             # (2, 2): reads (s_b, s_top), writes (s_b, s_top).
             # Three sets via __swap_tmp.
-            out.append((None, "set", (_SWAP_SCRATCH, reads[0])))
-            out.append((None, "set", (writes[0], reads[1])))
-            out.append((None, "set", (writes[1], _SWAP_SCRATCH)))
+            self._emit(out, "set", (_SWAP_SCRATCH, reads[0]))
+            self._emit(out, "set", (writes[0], reads[1]))
+            self._emit(out, "set", (writes[1], _SWAP_SCRATCH))
             return
 
         if name == "ROT":
             # (3, 3): reads (a, b, c), writes (a', b', c') = (b, c, a).
             # Four sets via __swap_tmp.
-            out.append((None, "set", (_SWAP_SCRATCH, reads[0])))
-            out.append((None, "set", (writes[0], reads[1])))
-            out.append((None, "set", (writes[1], reads[2])))
-            out.append((None, "set", (writes[2], _SWAP_SCRATCH)))
+            self._emit(out, "set", (_SWAP_SCRATCH, reads[0]))
+            self._emit(out, "set", (writes[0], reads[1]))
+            self._emit(out, "set", (writes[1], reads[2]))
+            self._emit(out, "set", (writes[2], _SWAP_SCRATCH))
             return
 
         if name == "TUCK":
             # (2, 3): a b → b a b.  reads (a, b), writes (b, a, b).
             # tmp = b; b' = a; a' = tmp; new_top = tmp.
-            out.append((None, "set", (_SWAP_SCRATCH, reads[1])))
-            out.append((None, "set", (writes[1], reads[0])))
-            out.append((None, "set", (writes[0], _SWAP_SCRATCH)))
-            out.append((None, "set", (writes[2], _SWAP_SCRATCH)))
+            self._emit(out, "set", (_SWAP_SCRATCH, reads[1]))
+            self._emit(out, "set", (writes[1], reads[0]))
+            self._emit(out, "set", (writes[0], _SWAP_SCRATCH))
+            self._emit(out, "set", (writes[2], _SWAP_SCRATCH))
             return
 
         raise NotImplementedError(f"stack op '{name}' has no emit handler")
@@ -604,7 +676,149 @@ class _Emitter:
                 return outer_rewrite(rewritten)
             return rewritten
 
-        self._emit_body(out, defn.body, slot_rewrite=rewrite)
+        # Walk the FUSED body, not `defn.body` — the dictionary holds
+        # the original Definition with the pre-fusion body, but the slot
+        # map was built from the fused program (via
+        # ``_fuse_variable_patterns`` in ``emit()``).  When the body
+        # contains a control-flow term (IfThen/Begin/DoLoop) the fusion
+        # pass `dc_replace`s it, producing a new object the slot map
+        # keys by identity — so the original term would KeyError on
+        # ``self.slots.reads(term)``.
+        fused_defn = next(
+            (
+                d for d in self.result.program.definitions
+                if d.name == defn.name
+            ),
+            defn,
+        )
+        self._emit_body(out, fused_defn.body, slot_rewrite=rewrite)
+
+    # ---- control-flow emission (bead .17) ------------------------------
+
+    def _emit_if_then(self, out: list, term: IfThen, slot_rewrite) -> None:
+        """IF / [ELSE] / THEN.
+
+        The flag is in `rw.reads[0]` (slot allocator recorded it on the
+        IfThen at depth `D-1`).  Two skeletons:
+
+        * No else: jump to end-label if flag==0; emit then-body; place
+          end-label.
+        * With else: jump to else-label if flag==0; emit then-body;
+          unconditional jump to end-label; place else-label; emit
+          else-body; place end-label.
+
+        Empty bodies are legal — the labels still get placed (as
+        sentinels if no instruction follows them).
+        """
+        n = self._if_counter
+        self._if_counter += 1
+        rw = self._rw(term, slot_rewrite)
+        flag = rw.reads[0]
+        end_label = f"L_if_{n}_end"
+
+        if term.else_body:
+            else_label = f"L_if_{n}_else"
+            self._emit(out, "jump", (else_label, "equal", flag, "0"))
+            self._emit_body(out, term.then_body, slot_rewrite)
+            self._emit(out, "jump", (end_label, "always", "0", "0"))
+            self._queue_label(else_label)
+            self._emit_body(out, term.else_body, slot_rewrite)
+            self._queue_label(end_label)
+        else:
+            self._emit(out, "jump", (end_label, "equal", flag, "0"))
+            self._emit_body(out, term.then_body, slot_rewrite)
+            self._queue_label(end_label)
+
+    def _emit_begin(self, out: list, term: Begin, slot_rewrite) -> None:
+        """BEGIN / UNTIL or BEGIN / WHILE / REPEAT.
+
+        The flag slot for both kinds is `s<depth_in(term) + frame_offset>`.
+        We can read the absolute depth directly from the slot allocator's
+        record on the Begin term itself: the term's reads/writes are both
+        empty, but the slot allocator did record it.  We need the depth
+        a different way — read it off the FIRST term in the body (its
+        ``depth_in`` is the entry depth).  Or — simpler — the flag in
+        an UNTIL lives at the same slot as the body's *final* push,
+        which is the slot just above the entry depth.
+
+        We compute the entry-depth slot index via the slot-rewrite walk:
+        we know any literal in the body would write to s<entry_depth +
+        local_depth>.  The cleanest path: the slot allocator's
+        max-slot-index data is too coarse; instead, peek at the
+        sub-AST.  We do the bookkeeping ourselves by reading
+        `result.depth_in(term)` and applying `slot_rewrite` to a synthetic
+        ``s<D>`` token.
+        """
+        n = self._begin_counter
+        self._begin_counter += 1
+        top_label = f"L_begin_{n}_top"
+
+        # The flag lives at slot s<entry_depth + 0>, where entry_depth is
+        # what stackcheck recorded for the Begin term (per the .15 slot
+        # allocator's `walk` — the body walks with the same frame_offset,
+        # so the entry depth in the absolute frame is just
+        # `result.depth_in(begin)` + frame_offset_of_caller).  We don't
+        # carry the frame_offset explicitly here, but the slot_rewrite
+        # callback does — it knows the mapping.  So compute the slot
+        # name as we would for a literal at the body's entry depth, then
+        # rewrite.
+        entry_depth = self.result.depth_in(term)
+        raw_flag_slot = f"s{entry_depth}"
+        flag = slot_rewrite(raw_flag_slot) if slot_rewrite is not None else raw_flag_slot
+
+        if term.kind == "until":
+            self._queue_label(top_label)
+            self._emit_body(out, term.body, slot_rewrite)
+            self._emit(out, "jump", (top_label, "equal", flag, "0"))
+        elif term.kind == "while-repeat":
+            after_label = f"L_begin_{n}_after"
+            self._queue_label(top_label)
+            self._emit_body(out, term.body, slot_rewrite)  # the test
+            self._emit(out, "jump", (after_label, "equal", flag, "0"))
+            self._emit_body(out, term.cond_body, slot_rewrite)
+            self._emit(out, "jump", (top_label, "always", "0", "0"))
+            self._queue_label(after_label)
+        else:
+            raise ValueError(f"unknown Begin kind {term.kind!r}")
+
+    def _emit_do_loop(self, out: list, term: DoLoop, slot_rewrite) -> None:
+        """DO / LOOP.
+
+        Slot allocator gave us `reads = (limit_slot, index_slot)` per
+        the ANS Forth `( limit index -- )` convention (index on top).
+
+        Lowering uses two named mlog variables — `__do_idx_<N>` and
+        `__do_limit_<N>` — so nested DO/LOOPs cannot collide.  `I`/`J`
+        in the body resolve via the emitter's `_loop_stack` (innermost
+        N on top).
+
+        Prologue:
+            set __do_idx_N s<index_slot>
+            set __do_limit_N s<limit_slot>
+        Top label, body, then increment + back-jump:
+            L_do_N_top:
+              <body>
+              op add __do_idx_N __do_idx_N 1
+              jump L_do_N_top lessThan __do_idx_N __do_limit_N
+        """
+        n = self._do_counter
+        self._do_counter += 1
+        rw = self._rw(term, slot_rewrite)
+        limit_slot, index_slot = rw.reads
+        idx_var = f"__do_idx_{n}"
+        limit_var = f"__do_limit_{n}"
+        top_label = f"L_do_{n}_top"
+
+        self._emit(out, "set", (idx_var, index_slot))
+        self._emit(out, "set", (limit_var, limit_slot))
+        self._queue_label(top_label)
+        self._loop_stack.append(n)
+        try:
+            self._emit_body(out, term.body, slot_rewrite)
+        finally:
+            self._loop_stack.pop()
+        self._emit(out, "op", ("add", idx_var, idx_var, "1"))
+        self._emit(out, "jump", (top_label, "lessThan", idx_var, limit_var))
 
     # ---- helpers --------------------------------------------------------
 

@@ -411,12 +411,16 @@ def test_user_definition_inlining_offsets_slots():
 # ---------------------------------------------------------------------------
 
 
-def test_control_flow_not_yet_supported():
-    """IF/THEN is bead mforth-10t.17 — emit raises a clear
-    NotImplementedError naming the unsupported construct.  Use a
-    balanced IF so stackcheck doesn't intercept the error first."""
-    with pytest.raises(NotImplementedError, match="IfThen|control flow"):
-        compile_to_tuples("1 IF 2 ELSE 3 THEN")
+def test_control_flow_is_supported_by_bead_17():
+    """Bead .17 added IF/ELSE/THEN, BEGIN/UNTIL, BEGIN/WHILE/REPEAT,
+    DO/LOOP emission.  This sanity check confirms a balanced IF/ELSE/THEN
+    no longer raises (the historical placeholder behaviour at .16
+    pinned a NotImplementedError; that's now obsolete).  Full coverage
+    of the control-flow shapes lives in ``test_emit_control.py``."""
+    instrs = compile_to_tuples("1 IF 2 ELSE 3 THEN")
+    # Smoke check: at least one jump and one label-bearing tuple emit.
+    assert any(opcode == "jump" for (_, opcode, _) in instrs if opcode is not None)
+    assert any(label is not None for (label, _, _) in instrs)
 
 
 def test_mindustry_primitive_not_yet_supported():
