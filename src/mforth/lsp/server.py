@@ -142,7 +142,16 @@ def _diag(line_1based: int, col_1based: int, message: str) -> lsp.Diagnostic:
 
 def analyze_document(text: str, *, uri: str) -> List[lsp.Diagnostic]:
     """Run lex / parse / resolve / stackcheck on `text` and return any
-    diagnostics. Always returns a list (possibly empty)."""
+    diagnostics. Always returns a list (possibly empty).
+
+    Pre-seeds the dictionary with sidecar-declared link names so
+    references like ``display PRINTFLUSH`` resolve cleanly when a
+    sibling ``<stem>.world.toml`` declares ``[links.display]``. Mirrors
+    the pre-seed pattern in ``backend/runner.py`` (.14 ship). Without
+    this, every sidecar-bound mforth-name surfaces as
+    ``unresolved word`` even though CLI compile + LSP completion both
+    know about it (regression: mforth-pr8).
+    """
     file = _file_from_uri(uri)
     try:
         program = parse(text, file=file)
@@ -151,8 +160,20 @@ def analyze_document(text: str, *, uri: str) -> List[lsp.Diagnostic]:
     except ParseError as e:
         return [_diag(e.line, e.col, e.message)]
 
+    # Pre-seed sidecar link names. Silent-degrades on missing /
+    # malformed sidecar (same convention as .25's
+    # _sidecar_link_candidates — sidecar validation errors surface via
+    # the separate analyze_sidecar diagnostics path).
+    dictionary = standard_dictionary()
+    sidecar_src_loc = SrcLoc(file=file, line=1, col=1)
+    for link_name, _link_type in _sidecar_link_candidates(uri):
+        if link_name not in dictionary:
+            dictionary.add_variable(
+                UserVariable(name=link_name, src_loc=sidecar_src_loc)
+            )
+
     try:
-        dictionary = resolve(program)
+        dictionary = resolve(program, dictionary=dictionary)
     except UnresolvedWordError as e:
         return [_diag(e.src_loc.line, e.src_loc.col, str(e.args[0]).split(": ", 2)[-1])]
 

@@ -369,6 +369,42 @@ def test_did_change_handler_incremental_sync_uses_full_document(monkeypatch):
     )
 
 
+def test_analyze_document_resolves_sidecar_link_names(tmp_path: Path):
+    """Regression for mforth-pr8: a `.fs` document that references a
+    sidecar-bound link (`display PRINTFLUSH`) must NOT show
+    `unresolved word 'display'` in LSP diagnostics when the sibling
+    `<stem>.world.toml` declares `[links.display]`.
+
+    Before the fix, `analyze_document` ran resolve() without any
+    sidecar context, so every sidecar-bound mforth-name surfaced as
+    unresolved — even though CLI compile + `.14` runner + `.25` LSP
+    completion all knew about the sidecar.
+
+    The canonical fix matches `backend/runner.py` (`.14` ship): load
+    the sibling `<stem>.world.toml`, pre-seed each `[links.X]` name as
+    a `UserVariable` entry, pass the pre-populated dictionary into
+    resolve().
+    """
+    from mforth.lsp.server import analyze_document
+
+    src_path = tmp_path / "hello.fs"
+    src_path.write_text('S" hi" PRINT\ndisplay PRINTFLUSH\n')
+    sidecar_path = tmp_path / "hello.world.toml"
+    sidecar_path.write_text(
+        '[links.display]\ntype = "message"\ntarget = "message1"\n'
+    )
+
+    diags = analyze_document(src_path.read_text(), uri=src_path.as_uri())
+
+    sidecar_link_errors = [
+        d for d in diags if "'display'" in d.message and "unresolved" in d.message.lower()
+    ]
+    assert sidecar_link_errors == [], (
+        f"LSP emitted phantom 'unresolved word display' even though "
+        f"hello.world.toml declares [links.display]. Diagnostics: {diags!r}"
+    )
+
+
 def test_did_open_for_sidecar_publishes_sidecar_diagnostic(monkeypatch, tmp_path: Path):
     """Opening a `.world.toml` document runs the sidecar analyzer
     (not the Forth analyzer)."""
