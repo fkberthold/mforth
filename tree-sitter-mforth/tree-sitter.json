@@ -1,0 +1,40 @@
+{
+  "grammars": [
+    {
+      "name": "mforth",
+      "camelcase": "Mforth",
+      "scope": "source.mforth",
+      "path": ".",
+      "file-types": [
+        "fs"
+      ],
+      "highlights": [
+        "queries/highlights.scm"
+      ],
+      "injection-regex": "^mforth$"
+    }
+  ],
+  "metadata": {
+    "version": "0.1.0",
+    "license": "MIT",
+    "description": "tree-sitter grammar for mforth (a pragmatic Forth dialect that compiles to Mindustry mlog)",
+    "authors": [
+      {
+        "name": "Frank Berthold",
+        "email": "fkberthold@gmail.com"
+      }
+    ],
+    "links": {
+      "repository": "https://github.com/fkberthold/mforth"
+    }
+  },
+  "bindings": {
+    "c": true,
+    "go": false,
+    "node": true,
+    "python": false,
+    "rust": false,
+    "swift": false,
+    "zig": false
+  }
+}
