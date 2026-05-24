@@ -12,23 +12,6 @@ each step so you see what the workflow actually does in motion.
 > [explanation](../explanation/index.md) — those discuss the *why*,
 > while tutorials stay focused on the doing.
 
-## Discipline
-
-A tutorial earns its place in this quadrant when it:
-
-- Names the *defined starting point* — what state the reader's machine
-  must be in before step one.
-- Names the *concrete result* — what the reader will have at the end,
-  visible enough to take a screenshot of or paste into a terminal.
-- Hands the reader the path. The tutorial does not branch on user
-  preference; that belongs in [how-to](../how-to/index.md).
-- Makes every step *succeed by following along*. If a step can fail
-  for normal reasons, the tutorial either guards against it or moves
-  the failure-handling to a how-to.
-
-If a page reads like a recipe ("to do X, run Y"), it has drifted out
-of this quadrant; promote it to [how-to](../how-to/index.md).
-
 ## Start here
 
 - [**Getting started**](./getting-started.md) — install, run a

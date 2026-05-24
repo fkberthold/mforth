@@ -9,21 +9,6 @@ sequentially.
 > in [Explanation](../explanation/index.md). Step-by-step belongs in
 > [Tutorials](../tutorials/index.md).
 
-## Discipline
-
-A reference page earns its place here when it:
-
-- States its scope in one line at the top — what surface this page
-  catalogues.
-- Lists every member of that surface, exhaustively. Cherry-picking
-  belongs in [how-to](../how-to/index.md).
-- Holds steady while you read. Reference is consulted, not narrated;
-  no "we", no "let's", no learning sequence.
-- Stays current with the source-of-truth on disk. Where this project
-  uses the `mkdocs-include-markdown` glob pattern (see auto-discovered
-  pages below), the docs cannot drift from the primitives — the
-  catalogue is the filesystem, rendered.
-
 ## Static reference pages
 
 mforth has no loom primitives (`skills/`/`commands/`/`agents/`/`hooks/`),

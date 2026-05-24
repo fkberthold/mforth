@@ -14,23 +14,6 @@ have a thesis; they argue for it.
 > find yourself reaching for a procedure or an exhaustive list, you
 > have drifted out of this quadrant.
 
-## Discipline
-
-A page earns its place in Explanation when it:
-
-- Has a *thesis* at the top — a one-sentence claim the rest of the
-  page argues for.
-- Acknowledges the rejected alternatives. If a page reads as if its
-  conclusion was the only possible one, it is hiding the design
-  choice from the reader.
-- Connects to constraints. The reader should leave knowing not just
-  what the design is but *what it could not afford to lose*.
-- Cross-links into [Reference](../reference/index.md) and
-  [How-to](../how-to/index.md) rather than re-stating their content.
-  Explanation does not duplicate the surface or the recipe; it
-  explains why the surface is shaped the way it is and why the
-  recipe is the recipe.
-
 ## Start here
 
 - [**Mental model**](mental-model.md) — the load-bearing idea behind
