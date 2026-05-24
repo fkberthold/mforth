@@ -288,6 +288,87 @@ def test_did_change_handler_republishes_diagnostics(monkeypatch):
     assert published[1].diagnostics[0].severity == lsp.DiagnosticSeverity.Error
 
 
+def test_did_change_handler_incremental_sync_uses_full_document(monkeypatch):
+    """Regression for mforth-mig: under TextDocumentSyncKind.Incremental
+    (the default for Helix, modern VS Code, modern Neovim), each
+    didChange ships only the replaced fragment in `text` — NOT the full
+    document. The LSP must analyse the assembled workspace document,
+    not the fragment.
+
+    Symptom of the bug being pinned: a `didChange` carrying just `"T"`
+    (the user replaced one character) would otherwise cause the LSP
+    to analyse the document as the literal string `"T"`, emit
+    `unresolved word 'T'`, and pollute the published diagnostics. After
+    the fix, the published diagnostics reflect analysis of the full
+    workspace document, which is `"1 2 + .\\n"` plus the applied edit.
+    """
+    from pygls.workspace import Workspace
+
+    server = create_server()
+    # Initialise the workspace pygls-style so workspace.get_text_document
+    # works. In production, pygls inits this during the LSP `initialize`
+    # request; the test harness has to do it manually.
+    server.protocol._workspace = Workspace(
+        None, lsp.TextDocumentSyncKind.Incremental
+    )
+
+    published: list[lsp.PublishDiagnosticsParams] = []
+    monkeypatch.setattr(
+        server,
+        "text_document_publish_diagnostics",
+        lambda p: published.append(p),
+    )
+
+    open_handler = server.protocol.fm.features[lsp.TEXT_DOCUMENT_DID_OPEN]
+    change_handler = server.protocol.fm.features[lsp.TEXT_DOCUMENT_DID_CHANGE]
+
+    uri = "file:///tmp/incremental.fs"
+    original = "1 2 + .\n"
+
+    # didOpen with the full document — analysis is clean. Also update
+    # the workspace (in production, pygls does this before the handler).
+    open_doc = lsp.TextDocumentItem(
+        uri=uri, language_id="forth", version=1, text=original
+    )
+    server.workspace.put_text_document(open_doc)
+    _invoke(open_handler, server, lsp.DidOpenTextDocumentParams(text_document=open_doc))
+
+    # didChange with an Incremental edit: insert "T" at col 0. `text`
+    # carries ONLY the fragment, not the full document — this is what
+    # Helix sends per-keystroke. Apply to workspace BEFORE invoking the
+    # handler (mimicking pygls' middleware).
+    change = lsp.TextDocumentContentChangePartial(
+        range=lsp.Range(
+            start=lsp.Position(line=0, character=0),
+            end=lsp.Position(line=0, character=0),
+        ),
+        text="T",
+    )
+    server.workspace.update_text_document(
+        text_doc=lsp.VersionedTextDocumentIdentifier(uri=uri, version=2),
+        change=change,
+    )
+    change_params = lsp.DidChangeTextDocumentParams(
+        text_document=lsp.VersionedTextDocumentIdentifier(uri=uri, version=2),
+        content_changes=[change],
+    )
+    _invoke(change_handler, server, change_params)
+
+    # Two publishes: one from didOpen, one from didChange. The didChange
+    # publish must NOT contain a phantom `unresolved word 'T'` diagnostic.
+    assert len(published) == 2
+    assert published[0].diagnostics == []
+    fragment_only_diags = [
+        d for d in published[1].diagnostics
+        if "'T'" in d.message and "unresolved word" in d.message
+    ]
+    assert fragment_only_diags == [], (
+        f"LSP emitted phantom 'unresolved word T' diagnostic — bug "
+        f"is analyzing the change fragment instead of the workspace "
+        f"document. Diagnostics: {published[1].diagnostics!r}"
+    )
+
+
 def test_did_open_for_sidecar_publishes_sidecar_diagnostic(monkeypatch, tmp_path: Path):
     """Opening a `.world.toml` document runs the sidecar analyzer
     (not the Forth analyzer)."""

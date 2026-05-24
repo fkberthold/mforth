@@ -966,23 +966,31 @@ def _extract_change_text(
 ) -> str | None:
     """Pull the new full text from a didChange params.
 
-    With ``TextDocumentSyncKind.Full`` (pygls default) the latest
-    content_change carries the full document. Fall back to the
-    workspace document if the change is empty.
+    Prefer the pygls workspace's assembled document state — it tracks
+    edits under BOTH ``TextDocumentSyncKind.Full`` AND ``Incremental``.
+
+    The earlier shape (read ``content_changes[-1].text`` first) was
+    wrong under Incremental sync: the change payload's ``text`` is the
+    REPLACEMENT for the change range, not the full document, so a
+    single-character keystroke from Helix etc. would arrive as
+    ``text="h"`` and the analyzer would see a 1-character document.
+    Regression test: ``test_did_change_handler_incremental_sync_uses_full_document``.
+    Bug bead: ``mforth-mig``.
     """
+    try:
+        doc = ls.workspace.get_text_document(params.text_document.uri)
+        if doc.source is not None:
+            return doc.source
+    except Exception:
+        pass
+    # Fallback for the teardown-race / no-workspace case: scrape the
+    # last content_change. Only correct under Full sync.
     if params.content_changes:
         last = params.content_changes[-1]
         text = getattr(last, "text", None)
         if isinstance(text, str):
             return text
-    # Workspace fallback — keeps the handler correct against an
-    # Incremental sync configuration that the test harness doesn't
-    # exercise but a real client might use.
-    try:
-        doc = ls.workspace.get_text_document(params.text_document.uri)
-        return doc.source
-    except Exception:
-        return None
+    return None
 
 
 def _get_server_version() -> str:
