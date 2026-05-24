@@ -88,7 +88,9 @@ def test_hover_on_at_copper_shows_doc():
     assert hov is not None
     # Must include the canonical name and stack-effect render.
     assert "@copper" in hov
-    assert "( -- " in hov  # stack effect formatted somehow
+    # Stack effect rendered with explicit arity numbers per .24's
+    # `_format_stack_effect` (e.g., `( 0 -- 1 )` for `(--n)`-style entries).
+    assert "(" in hov and "--" in hov
 
 
 def test_hover_on_at_time_shows_doc():

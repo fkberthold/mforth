@@ -494,10 +494,17 @@ def completions_for(
     items: List[lsp.CompletionItem] = []
 
     # 1. Built-ins — always available, even when the document is broken.
+    # Iterate by dict key (lowercased name) so aliases produce their own
+    # completion items. When the key equals entry.name.lower(), it's the
+    # canonical entry; otherwise it's an alias (e.g., @ticks → @tick from
+    # mforth-eaz's _MINDUSTRY_ALIASES).
     builtins_dict = standard_dictionary()
     for name_lc, entry in builtins_dict._entries.items():  # noqa: SLF001
         if isinstance(entry, BuiltinWord):
-            items.append(_builtin_completion(entry))
+            if name_lc == entry.name.lower():
+                items.append(_builtin_completion(entry))
+            else:
+                items.append(_builtin_completion(entry, alias_label=name_lc))
 
     # 2 + 3. User words + variables — only those declared before the cursor.
     # Re-run lex/parse/resolve. parse failure → skip user-defined sources;
@@ -536,15 +543,21 @@ def completions_for(
     return items
 
 
-def _builtin_completion(entry: BuiltinWord) -> lsp.CompletionItem:
+def _builtin_completion(
+    entry: BuiltinWord, *, alias_label: str | None = None
+) -> lsp.CompletionItem:
+    label = alias_label if alias_label is not None else entry.name
+    doc_value = entry.doc or "(no documentation)"
+    if alias_label is not None:
+        doc_value = f"alias of {entry.name}\n{doc_value}"
     detail = _format_stack_effect(entry.stack_effect.in_arity, entry.stack_effect.out_arity)
     return lsp.CompletionItem(
-        label=entry.name,
+        label=label,
         kind=lsp.CompletionItemKind.Function,
         detail=detail,
         documentation=lsp.MarkupContent(
             kind=lsp.MarkupKind.PlainText,
-            value=entry.doc or "(no documentation)",
+            value=doc_value,
         ),
     )
 
