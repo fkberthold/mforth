@@ -99,21 +99,26 @@ event-stream equivalence on every shipped example.
 
 ## Documentation
 
-The full documentation lives in [`docs/`](docs/), organized per the
+The full documentation is published at
+**<https://fkberthold.github.io/mforth/>**, organized per the
 [Diataxis](https://diataxis.fr/) framework:
 
-- **Tutorials** ([`docs/tutorials/`](docs/tutorials/)) — guided, learn-by-doing.
-  Start here if you're new to mforth or new to mlog.
-- **How-to guides** ([`docs/how-to/`](docs/how-to/)) — task-focused recipes
-  (e.g., wiring mforth into Helix, pairing with a sidecar).
-- **Reference** ([`docs/reference/`](docs/reference/)) — the dictionary
-  word list, sidecar schema, CLI subcommands.
-- **Explanation** ([`docs/explanation/`](docs/explanation/)) — design
-  rationale, the REPL ↔ mlog equivalence property, the dialect-choice
+- **[Tutorials](https://fkberthold.github.io/mforth/tutorials/)** — guided,
+  learn-by-doing. Start with *Getting started* (5 min), then *Writing
+  mforth for Mindustry* (the 6-part tutorial that ports a real mlog
+  script from the Mindustry wiki).
+- **[How-to guides](https://fkberthold.github.io/mforth/how-to/)** —
+  task-focused recipes (wiring mforth into Helix or Neovim, pairing
+  with a sidecar).
+- **[Reference](https://fkberthold.github.io/mforth/reference/)** — the
+  dictionary word list, sidecar schema, CLI subcommands.
+- **[Explanation](https://fkberthold.github.io/mforth/explanation/)** —
+  design rationale, the REPL ↔ mlog equivalence property, dialect-choice
   trade-offs.
 
-Until the docs tree is fully populated, the MemPalace decision drawers
-cited in **Status** above are the authoritative deep-dive.
+For source-level deep dives beyond what the docs site covers, the
+MemPalace decision drawers cited in **Status** above are the
+authoritative record.
 
 ## Development
 
