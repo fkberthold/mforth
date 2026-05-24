@@ -77,3 +77,4 @@ nav:
   - Explanation:
       - explanation/index.md
       - Mental model: explanation/mental-model.md
+      - Forth, the mental model: explanation/forth-mental-model.md

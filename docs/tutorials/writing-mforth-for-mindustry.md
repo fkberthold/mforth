@@ -19,13 +19,14 @@ program plus its `.world.toml` sidecar. Every snippet has been
 compiled and run as part of writing this tutorial; if a snippet
 errors for you, that is a bug — please file one.
 
-The six parts:
+The seven parts (Part 0 is a 5-minute Forth primer; the rest build the programs):
 
 | Part | What you build | Time |
 |------|---------------|------|
+| [0](#part-0-forth-at-a-glance) | The stack mental model, in 5 minutes | ~5 min |
 | [1](#part-1-hello-message-block) | `hello, mforth` to a message block | ~5 min |
 | [2](#part-2-a-counter-you-can-paste-in-game) | A counter that ticks on a message block | ~10 min |
-| [3](#part-3-sense-and-control-a-single-block) | Enable a conveyor when a vault is low | ~10 min |
+| [3](#part-3-just-charge-hysteresis-on-a-power-node) | Port the wiki *Just Charge* — keep a battery charged with hysteresis | ~10 min |
 | [4](#part-4-the-sorter-picker-rewrite) | Port a wiki Sorter Picker — side-by-side | ~15 min |
 | [5](#part-5-all-in-as-a-definition) | Port "All In" using a Forth definition | ~10 min |
 | [6](#part-6-whats-next) | Honest appendix: what is v2-only | ~5 min |
@@ -39,6 +40,97 @@ single pass through the simulator: `mforth run --no-loop FILE.fs`.
 To compile to paste-ready mlog: `mforth compile FILE.fs -o FILE.mlog`.
 Drop `--no-loop` and the simulator will keep looping — same as a
 real logic processor in-game.
+
+---
+
+## Part 0 — Forth at a glance
+
+You can skip this part if you already know Forth. Otherwise, five
+minutes here will save you from re-reading Part 4 twice.
+
+Forth is a stack language. Every value lives on a single data stack;
+every word (Forth's name for *function*) consumes from the top and
+pushes results back. There is no `x = f(y, z)`. The values arrive
+first, the operator picks them up.
+
+### The stack mental model
+
+Read left-to-right. Each token either pushes a value or runs a word
+that consumes values and pushes new ones.
+
+```forth
+5 3 +
+```
+
+| token | stack after | what happened |
+|-------|-------------|---------------|
+| `5`   | `5`         | pushed `5` |
+| `3`   | `5 3`       | pushed `3` (now on top) |
+| `+`   | `8`         | `+` popped `3` and `5`, pushed `5 + 3` |
+
+That is the entire trick. `5 3 +` and `3 5 +` produce the same `8`
+because `+` is commutative. `5 3 -` produces `2` — `5` was *under*
+`3`, so `+` and `-` both compute `(under) op (top)`.
+
+### Stack-effect notation
+
+Every Forth word has a fixed stack effect, written as a comment:
+
+```forth
++      ( a b -- c )       \ consumes 2, produces 1
+DUP    ( a -- a a )       \ consumes 1, produces 2 (a copy)
+PRINT  ( str -- )         \ consumes 1, produces nothing
+```
+
+The hyphen-hyphen separates *consumes* (left) from *produces*
+(right). The right side of the consumes list is what was *on top*
+of the stack. So `( a b -- c )` means "`b` was on top, `a` was
+underneath; both are gone, `c` is now on top".
+
+When you run `mforth lsp` and hover over a word in your editor,
+this is the notation the LSP shows you. The stack-checker uses
+the same notation internally; every word your `.fs` source uses
+has its effect declared, and the compiler refuses to emit code if
+the depths don't add up at a branch boundary.
+
+### The five stack-juggling words you will actually use
+
+You will see all five in this tutorial. Each is a one-liner.
+
+| word    | effect              | when you'd reach for it |
+|---------|---------------------|--------------------------|
+| `DUP`   | `( a -- a a )`      | you need to use the same value twice |
+| `DROP`  | `( a -- )`          | the top value isn't needed anymore |
+| `SWAP`  | `( a b -- b a )`    | the two top values arrived in the wrong order |
+| `OVER`  | `( a b -- a b a )`  | peek at the underneath value without losing the top |
+| `ROT`   | `( a b c -- b c a )`| bring the third-deepest value up to the top |
+
+Two more, `NIP ( a b -- b )` and `TUCK ( a b -- b a b )`, exist as
+shorthand combinations (`SWAP DROP` and `SWAP OVER`). They won't
+appear in this tutorial.
+
+### Why postfix
+
+Two practical wins, the same ones that draw people to RPN
+calculators:
+
+- **No operator precedence, no parens.** `(5 + 3) * 2` is
+  `5 3 + 2 *`. `5 + 3 * 2` is `5 3 2 * +`. The token order
+  *is* the evaluation order.
+- **The stack is the intermediate state.** No named temporaries.
+  When you want to use the same value twice you say `DUP`; you
+  don't invent a variable name.
+
+Mlog's `op add result a b` form is doing the same work with named
+result syntax. Forth lets the result stay on the stack until the
+next consumer claims it. For block-control programs — where most
+intermediate values are used once, on the next line — this elides
+about half the variable names you'd otherwise need to invent.
+
+For the deeper mental model — composition, factoring, why postfix
+shapes programs differently from infix — see
+[Forth, the mental model](../explanation/forth-mental-model.md)
+(coming soon as part of the explanation quadrant).
 
 ---
 
@@ -194,34 +286,78 @@ count up: `count=1`, `count=2`, `count=3`, …
 
 ---
 
-## Part 3 — Sense and control a single block
+## Part 3 — *Just Charge*: hysteresis on a power node
 
-This is the first program that *reads* the world. We sense how much
-copper is in a vault, compare against a threshold, and enable a
-conveyor when the vault is low.
+The first program that ports a real wiki script — and the first
+that closes a feedback loop. We sense a power network's stored
+and total capacity, then enable a generator when storage drops
+below 95% of capacity and *keep it on* until storage is full
+again. That last clause — "keep it on until full" — is
+**hysteresis**, and it needs state.
+
+[The wiki source][wiki] for *Just Charge*:
+
+[wiki]: https://github.com/Anuken/Mindustry/wiki
+
+```
+sensor max node1 @powerNetCapacity
+sensor power node1 @powerNetStored
+op lessThan notFull power max
+op mul min max 0.95
+op lessThan notMin power min
+op notEqual notCharging true charging
+op or charging charging notMin
+op land charging charging notFull
+control enabled generator1 charging 0 0 0
+```
+
+Nine lines that mean: *toggle the generator on when the battery
+drops below 95%, then leave it on until the battery is full.* The
+trick is the variable `charging` — it's read on the right side of
+the `or`/`land` and re-written on the left, so its previous value
+*from the prior tick* feeds the current decision. (The
+`notCharging` line is dead — the wiki script computes it and never
+reads it.)
+
+That is hysteresis: the controller's output remembers its last
+state, so it doesn't flutter on/off near the threshold.
 
 **`part3.fs`:**
 
 ```forth
-\ Part 3 — Sense vault, control conveyor.
-\ vault1 @copper SENSOR pushes the current copper amount in vault1.
-\ The CONTROL-ENABLED lifter wants a literal flag, so we choose 1
-\ or 0 inside an IF/ELSE/THEN rather than computing it on the stack.
-vault1 @copper SENSOR 500 < IF
-  conveyor1 1 CONTROL-ENABLED
-ELSE
-  conveyor1 0 CONTROL-ENABLED
+\ Part 3 — Just Charge port: keep a power network charged to ~95%
+\ with hysteresis. The VARIABLE `charging` carries last tick's
+\ decision into this tick — that's what makes the toggle sticky.
+VARIABLE charging
+VARIABLE max
+VARIABLE power
+
+node1 @powerNetCapacity SENSOR max !
+node1 @powerNetStored   SENSOR power !
+
+\ notMin = power < max * 0.95. v1 mforth has no float literals,
+\ so use integer math: power*100 < max*95 says the same thing.
+power @ 100 *  max @ 95 *  <        \ ( -- notMin )
+charging @ OR                       \ ( -- charging|notMin )
+
+\ notFull = power < max
+power @  max @  <                   \ ( -- (charging|notMin) notFull )
+AND                                 \ ( -- charging' )
+
+DUP charging !                      \ save for next tick, keep flag on stack
+IF generator1 1 CONTROL-ENABLED
+ELSE generator1 0 CONTROL-ENABLED
 THEN
 ```
 
 **`part3.world.toml`:**
 
 ```toml
-[links.vault1]
+[links.node1]
 type   = "generic"
-target = "vault1"
+target = "node1"
 
-[links.conveyor1]
+[links.generator1]
 type   = "switch"
 target = "switch1"
 enabled = false
@@ -233,20 +369,22 @@ realtime = false
 
 The new ideas:
 
-- `vault1 @copper SENSOR` is mforth's spelling of mlog's
-  `sensor result vault1 @copper`. The block name and the content
-  identifier (`@copper` is a built-in word; mforth ships 154 of
-  them — items, liquids, units, blocks, sensor properties) go on
-  the stack first, then `SENSOR` consumes both and pushes the
-  read value.
-- `500 <` compares: the value below 500 leaves `1` (true) on the
-  stack, otherwise `0` (false).
-- `IF ... ELSE ... THEN` is Forth's conditional. It consumes the
-  flag from the top of the stack and runs one of the two arms.
-- `conveyor1 1 CONTROL-ENABLED` is mforth's spelling of mlog's
-  `control enabled conveyor1 1 0 0 0`. Because both the block and
-  the flag are literals, mforth's emitter recognises the pattern
-  and emits a single tight instruction.
+- **`SENSOR ... !` pattern.** `node1 @powerNetCapacity SENSOR`
+  pushes the sensor reading; `max !` stores it into the
+  VARIABLE `max` from Part 2. Capturing readings into VARIABLEs
+  lets you reference them twice without juggling the stack.
+- **`OR` and `AND`** are mforth's boolean combinators. They map
+  to mlog's `op or` and `op land` and consume two flags
+  (each `0` or `1`), pushing the combined flag.
+- **VARIABLE-for-state.** The `charging` VARIABLE persists across
+  ticks (the processor auto-loops, re-running the program top to
+  bottom forever). Read it with `charging @`, fold it into the
+  new decision, write the updated value with `charging !`. The
+  same pattern your `n` counter used in Part 2, applied to a
+  boolean.
+- **`DUP charging !`** is the idiom for "save this value and keep
+  using it". `!` consumes the top of the stack, so without the
+  `DUP` you'd have to read `charging @` again on the next line.
 
 **Run it:**
 
@@ -254,9 +392,9 @@ The new ideas:
 mforth run --no-loop part3.fs
 ```
 
-Silent. The mock vault has no copper seeded, so the comparison was
-`0 < 500` → true → the `CONTROL-ENABLED` branch with flag `1`
-fired.
+Silent. The mock world starts with `power = 0` and `max = 0`,
+which trivially exits the loop without firing the generator —
+exactly what you want before the network exists.
 
 **Compile it:**
 
@@ -265,28 +403,79 @@ mforth compile part3.fs -o part3.mlog
 cat part3.mlog
 ```
 
-Seven instructions:
+23 instructions:
 
 ```
-sensor s0 vault1 @copper
-set s1 500
+sensor s0 node1 @powerNetCapacity
+set max s0
+sensor s0 node1 @powerNetStored
+set power s0
+set s0 power
+set s1 100
+op mul s0 s0 s1
+set s1 max
+set s2 95
+op mul s1 s1 s2
 op lessThan s0 s0 s1
-jump 6 equal s0 0
-control enabled conveyor1 1 0 0 0
-jump 7 always 0 0
-control enabled conveyor1 0 0 0 0
+set s1 charging
+op or s0 s0 s1
+set s1 power
+set s2 max
+op lessThan s1 s1 s2
+op land s0 s0 s1
+set s1 s0
+set charging s1
+jump 22 equal s0 0
+control enabled generator1 1 0 0 0
+jump 23 always 0 0
+control enabled generator1 0 0 0 0
 ```
 
-Paste this into a logic processor with a vault and a conveyor
-switch linked, and the conveyor will turn on whenever the vault
-has fewer than 500 units of copper.
+| Metric | Wiki *Just Charge* | mforth source | mforth compiled |
+|--------|---------------------|---------------|-----------------|
+| Lines (non-blank, non-comment) | 9 | 11 | 23 |
+| Named scratch variables | 5 (incl. 1 dead) | 3 (named state) | 3 (carried through) |
+| Branches | 0 | 1 `IF/ELSE` | 2 jumps |
 
-A quick aside on what mforth caught for you. If you had tried
-`conveyor1 SWAP CONTROL-ENABLED` to push the comparison's result
-as the flag, mforth would have refused at compile time with:
+Be honest about the trade. The compiled mlog is **larger than the
+wiki original** — by more than 2×. Three reasons, all tracked:
+
+1. **`CONTROL-ENABLED` requires a literal flag in v1.** The wiki
+   script ends with `control enabled generator1 charging 0 0 0`,
+   passing the computed flag straight through. v1 mforth's
+   `CONTROL-ENABLED` lifter needs the flag to be a literal `0` or
+   `1`, which forces an `IF/ELSE` and two `control` instructions.
+   Tracked as `mforth-vdt`.
+2. **No float literals in v1.** The wiki uses `0.95`; we use
+   `* 100` and `* 95` to keep the same math with integers. Two
+   extra `set`/`op mul` pairs.
+3. **VARIABLE-routed values reload through stack slots.** Each
+   `max @` / `power @` does a `set s? max` before it can be used.
+   The optimizer will fold these (see `mforth-10t` v2 roadmap),
+   but v1 emits them straight.
+
+What you gained anyway:
+
+- **Hysteresis is legible.** `charging @ OR ... AND` reads as
+  "*if we were charging, stay charging — unless we're full.*"
+  The wiki version says the same thing across three `op` lines
+  with a dead variable in the middle.
+- **The dead variable is gone.** mforth's stack-checker would
+  refuse to compile a word that produces an unused value at the
+  top of an expression, so the equivalent of the wiki's
+  `notCharging` line can't survive a re-port.
+- **The compiler catches stack mistakes.** Drop one of the `@`s
+  and mforth refuses at compile time with a clear diagnostic.
+  In the wiki mlog, the same typo silently reads a stale value
+  from a previous tick.
+
+A quick aside on what mforth caught for us *while writing this
+section*. The first draft tried `generator1 SWAP CONTROL-ENABLED`
+to push the computed flag straight to the lifter. mforth refused
+with:
 
 ```
-VARIABLE address 'conveyor1' is being consumed by 'SWAP' rather
+VARIABLE address 'generator1' is being consumed by 'SWAP' rather
 than by @ or ! — v1 mforth is cell-free and does not support
 manipulating variable addresses as stack values
 ```
@@ -299,11 +488,11 @@ have silently produced wrong behaviour at runtime.
 
 ## Part 4 — The Sorter Picker rewrite
 
-Here is where mforth earns its keep. We are going to port a real
-mlog script from the [Mindustry wiki][wiki] — the *Sorter Picker*
-— and put the original mlog and the mforth source side-by-side.
-
-[wiki]: https://github.com/Anuken/Mindustry/wiki
+Part 3 already ported a wiki script. This part ports a longer one
+— the *Sorter Picker* — and puts the original mlog and the mforth
+source side-by-side so you can see the leverage. Part 3 won on
+hysteresis legibility but lost on instruction count; here, mforth
+wins on both fronts.
 
 The job: an unloader on `unloader1` pulls items out of `vault1`.
 We pick what to drain based on which item vault1 holds more of —
@@ -559,8 +748,9 @@ What you gained even with the larger compiled output:
 ## Part 6 — What's next
 
 You have now written and compiled six mforth programs and ported
-two of the simpler wiki scripts. The wiki has more programs, and
-some of them are out of scope for v1 mforth on purpose.
+three of the simpler wiki scripts (*Just Charge*, *Sorter Picker*,
+*All In*). The wiki has more programs, and some of them are out of
+scope for v1 mforth on purpose.
 
 ### What v1 mforth can do today (block-side automation)
 
@@ -581,6 +771,7 @@ some of them are out of scope for v1 mforth on purpose.
 
 After this tutorial, you can write:
 
+- `Just Charge` — Part 3 verbatim. Hysteresis on a power network.
 - `ConveyorBlock` — the same pattern as Part 5, with whichever
   resources you actually use.
 - `Sorter Picker` — Part 4's pattern; the simple "drain the
@@ -592,9 +783,9 @@ After this tutorial, you can write:
 ### Wiki scripts that are v2-only
 
 These need unit-binding primitives (`ubind`, `ucontrol`, `ulocate`)
-that v1 deliberately skipped. They are the v2 north star:
+or memory cells (`read`/`write` against a `bank1`) that v1
+deliberately skipped. They are the v2 north star:
 
-- `Just Charge` — bind a unit and route it to a power node.
 - `Heal Self`, `Heal Self When` — bind a unit and apply a heal.
 - `Group Attack Heal` — coordinate a unit group's targeting.
 - `Group Attack One Base` — assault-pattern coordination.
