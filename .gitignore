@@ -40,3 +40,4 @@ tree-sitter-mforth/src/tree_sitter/
 tree-sitter-mforth/node_modules/
 tree-sitter-mforth/build/
 /site/
+.tutorial-snippets/

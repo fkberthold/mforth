@@ -1,57 +1,93 @@
 # Getting started
 
-> **You will:** install mforth on a fresh machine, run it
-> against a small example, and confirm the result. About 10–20 minutes.
+> **You will:** install mforth, run a one-line program against the
+> host REPL simulator, and compile it to paste-ready mlog. About
+> five minutes.
 >
-> **You will need:** a working development environment, a terminal,
-> and read access to the mforth repository at
-> https://github.com/fkberthold/mforth.
+> **You will need:** Python 3.11 or newer, `git`, and a terminal.
 
-This is a *thin tutorial*: one path, one aha moment, no branches. If
-you want to do something the tutorial doesn't show, finish it first
-and then jump to the [how-to guides](../how-to/index.md).
+This is the shortest path from `git clone` to *something mforth ran
+and something mforth compiled*. The longer
+[Writing mforth for Mindustry](./writing-mforth-for-mindustry.md)
+tutorial picks up where this one ends — it walks you through six
+parts that ladder from "hello, message block" up to porting a
+hand-written mlog script from the Mindustry wiki.
 
 ## 1. Install
 
-Follow the [Install how-to](../how-to/install.md) to get
-mforth on your machine. Come back here when the install
-verification step passes.
+If you have not already, follow the
+[Install how-to](../how-to/install.md). Come back here when
+`mforth --help` prints a usage line that names `repl`, `run`, and
+`compile` as subcommands.
 
-## 2. Run it against the example
+## 2. Run your first program
 
-Pick the smallest meaningful invocation of mforth —
-something that produces visible output in under a minute — and run
-it. Replace the placeholder below with the project's actual quickstart
-invocation.
+Make a file `hello.fs` anywhere on disk:
 
-```bash
-# replace with the project's hello-world command
-mforth --help
+```forth
+S" hello, mforth" PRINT
+display PRINTFLUSH
 ```
 
-You should see usage output naming at least one subcommand. If you
-don't, jump to the troubleshooting how-to (or file a bug — empty
-output here means the tutorial path is broken).
+And a sidecar `hello.world.toml` next to it (same basename):
 
-## 3. Inspect the result
+```toml
+[links.display]
+type   = "message"
+target = "message1"
 
-Open the output, the file, or the page that step 2 produced. Read it
-end-to-end. The first thing you spot is your *aha moment* — the thing
-mforth did that you couldn't have done in one step
-yourself.
+[clock]
+ipt      = 8
+realtime = false
+```
+
+The sidecar tells mforth which Mindustry block the name `display`
+refers to — here, the in-game message block labelled `message1`.
+
+Run it through the host REPL simulator:
+
+```bash
+mforth run --no-loop hello.fs
+```
+
+The simulator processed the script silently — it stored
+`"hello, mforth"` into the simulated message block and stopped.
+(Drop `--no-loop` and the program would auto-repeat: mlog's "fall
+off the end and restart" semantics.)
+
+## 3. Compile to mlog
+
+```bash
+mforth compile hello.fs -o hello.mlog
+cat hello.mlog
+```
+
+You will see two lines of mlog:
+
+```
+print "hello, mforth"
+printflush message1
+```
+
+That is paste-ready: open a logic processor in Mindustry, link a
+message block to it, paste, and the block will read
+`hello, mforth`.
 
 ## What you have now
 
-- A working mforth install you can re-invoke at will.
-- A small, real artefact produced end-to-end.
-- Enough context to read the [how-to guides](../how-to/index.md)
-  knowing which task each guide solves.
+- A working mforth install (`mforth --help` works).
+- A `.fs` file that ran end-to-end against the simulator.
+- A `.mlog` file you could paste into a Mindustry logic processor.
 
 ## What to read next
 
-- [How-to: Install](../how-to/install.md) — re-installing, upgrading,
-  or installing on a second machine.
-- [Reference](../reference/index.md) — the catalogue of every
-  mforth surface you might want to consult.
+- [**Writing mforth for Mindustry**](./writing-mforth-for-mindustry.md)
+  — the six-part tutorial. Starts at the same `hello` shape and
+  ends with a side-by-side port of a wiki-catalogued mlog script.
+  About one hour total; do the parts in order.
+- [How-to: Install](../how-to/install.md) — re-installing,
+  upgrading, or installing on a second machine.
+- [Reference](../reference/index.md) — the full surface (every
+  Forth word, every sidecar field, every CLI flag).
 - [Explanation: Mental model](../explanation/mental-model.md) — why
   mforth is shaped the way it is.

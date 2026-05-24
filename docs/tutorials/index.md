@@ -31,6 +31,12 @@ of this quadrant; promote it to [how-to](../how-to/index.md).
 
 ## Start here
 
-- [**Getting started**](./getting-started.md) — your first end-to-end
-  pass through the project. About 10–20 minutes to do; sets up enough
-  context to navigate the rest of the docs.
+- [**Getting started**](./getting-started.md) — install, run a
+  one-line program against the host simulator, and compile to
+  paste-ready mlog. About five minutes; sets up enough context for
+  the longer tutorial below.
+- [**Writing mforth for Mindustry**](./writing-mforth-for-mindustry.md)
+  — the six-part walkthrough. Ladders from "hello, message block"
+  up to porting a hand-written mlog script from the Mindustry
+  wiki, side-by-side with the original. About one hour total; do
+  the parts in order. Picks up where *Getting started* ends.

@@ -66,6 +66,7 @@ nav:
   - Tutorials:
       - tutorials/index.md
       - Getting started: tutorials/getting-started.md
+      - Writing mforth for Mindustry: tutorials/writing-mforth-for-mindustry.md
   - How-to:
       - how-to/index.md
       - Install: how-to/install.md
