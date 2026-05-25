@@ -75,6 +75,7 @@ nav:
       - Install: how-to/install.md
       - Use with Helix: how-to/use-with-helix.md
       - Use with Neovim: how-to/use-with-nvim.md
+      - Use the web visualizer: how-to/use-the-web-visualizer.md
   - Reference:
       - reference/index.md
       - CLI: reference/cli.md
