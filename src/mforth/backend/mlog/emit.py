@@ -133,6 +133,7 @@ from mforth.parse import (
     Begin,
     DoLoop,
     IfThen,
+    LitFloat,
     LitInt,
     LitStr,
     Program,
@@ -517,6 +518,17 @@ class _Emitter:
             self._emit(out, "set", (writes[0], str(term.value)))
             return None
 
+        if isinstance(term, LitFloat):
+            # Float literal lowering (bead mforth-xk7). mlog accepts
+            # Python's ``repr(float)`` verbatim — decimal form for
+            # ordinary magnitudes (e.g. ``0.95``, ``3.14``, ``-2.5``)
+            # and scientific form for very small/large magnitudes
+            # (e.g. ``1e-05``). The in-game mlog tokenizer parses both.
+            self._guard_no_pending(pending_var, term)
+            writes = self._rw(term, slot_rewrite).writes
+            self._emit(out, "set", (writes[0], repr(term.value)))
+            return None
+
         if isinstance(term, LitStr):
             self._guard_no_pending(pending_var, term)
             writes = self._rw(term, slot_rewrite).writes
@@ -846,16 +858,22 @@ class _Emitter:
             )
             return 2
 
-        # PRINT: 2-term `LitInt|LitStr PRINT` → `print <value>` (quotes
-        # preserved on LitStr because mlog `print` accepts strings).
+        # PRINT: 2-term `LitInt|LitFloat|LitStr PRINT` → `print <value>`
+        # (quotes preserved on LitStr because mlog `print` accepts
+        # strings). LitFloat uses ``repr()`` so the operand matches the
+        # ``set s<i>`` lowering verbatim — keeps the REPL ↔ mlog
+        # equivalence event stream identical regardless of whether the
+        # lift fires or the slot-form fallback runs.
         if (
             i + 1 < len(body)
-            and isinstance(body[i], (LitStr, LitInt))
+            and isinstance(body[i], (LitStr, LitInt, LitFloat))
             and is_primitive(i + 1, "PRINT")
         ):
             lit = body[i]
             if isinstance(lit, LitStr):
                 operand = f'"{lit.value}"'
+            elif isinstance(lit, LitFloat):
+                operand = repr(lit.value)
             else:
                 operand = str(lit.value)
             self._emit(out, "print", (operand,))

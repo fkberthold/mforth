@@ -74,6 +74,7 @@ from mforth.parse import (
     Begin,
     DoLoop,
     IfThen,
+    LitFloat,
     LitInt,
     LitStr,
     VarRef,
@@ -181,7 +182,7 @@ def allocate_slots(result: StackcheckResult) -> SlotMap:
             local_depth = result.depth_in(term)
             absolute_depth = frame_offset + local_depth
 
-            if isinstance(term, (LitInt, LitStr)):
+            if isinstance(term, (LitInt, LitFloat, LitStr)):
                 # Pure push: writes one slot at the current top.
                 record(term, (), (_slot(absolute_depth),))
                 continue

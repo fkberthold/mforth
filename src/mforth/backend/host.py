@@ -65,6 +65,7 @@ from mforth.parse import (
     Definition,
     DoLoop,
     IfThen,
+    LitFloat,
     LitInt,
     LitStr,
     SrcLoc,
@@ -143,6 +144,13 @@ class Executor:
             term = terms[i]
 
             if isinstance(term, LitInt):
+                self.data_stack.append(term.value)
+                i += 1
+                continue
+
+            if isinstance(term, LitFloat):
+                # Push a Python float — already the runtime type used by
+                # SENSOR returns and `/` division (mforth-dlr).
                 self.data_stack.append(term.value)
                 i += 1
                 continue

@@ -39,6 +39,7 @@ from mforth.parse import (
     Definition,
     DoLoop,
     IfThen,
+    LitFloat,
     LitInt,
     LitStr,
     Program,
@@ -183,7 +184,7 @@ def stackcheck(
         for term in body:
             depths_in[id(term)] = depth
 
-            if isinstance(term, (LitInt, LitStr)):
+            if isinstance(term, (LitInt, LitFloat, LitStr)):
                 depth += 1
                 continue
 

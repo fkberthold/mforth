@@ -79,6 +79,7 @@ from mforth.parse import (
     Begin,
     DoLoop,
     IfThen,
+    LitFloat,
     LitInt,
     LitStr,
     ParseError,
@@ -367,6 +368,16 @@ def _term_extent(term) -> tuple[int, int, int] | None:
             term.src_loc.col,
             term.src_loc.col + len(str(term.value)),
         )
+    if isinstance(term, LitFloat):
+        # Use ``repr`` so the rendered extent matches the source token
+        # for typical magnitudes (``0.95`` → 4 chars). Scientific-notation
+        # cases are best-effort — the LSP only needs the cursor to land
+        # somewhere on the literal to hit it.
+        return (
+            term.src_loc.line,
+            term.src_loc.col,
+            term.src_loc.col + len(repr(term.value)),
+        )
     if isinstance(term, LitStr):
         # `." hello"` — the parser puts src_loc on the `."` opener; the
         # rendered length covers the opener (2 chars), the value, and the
@@ -387,6 +398,8 @@ def _format_hover(term, dictionary, sc_result) -> str | None:
     term shape isn't hover-able (e.g. an unresolved word)."""
     if isinstance(term, LitInt):
         return f"{term.value}\n( -- n )"
+    if isinstance(term, LitFloat):
+        return f"{term.value}\n( -- f )"
     if isinstance(term, LitStr):
         return f'"{term.value}"\n( -- str )'
     if isinstance(term, WordCall):

@@ -52,6 +52,23 @@ class LitInt:
 
 
 @dataclass(frozen=True)
+class LitFloat:
+    """Float-literal AST node (bead mforth-xk7).
+
+    Same stack-effect as ``LitInt`` (``( -- f )``); the only reason
+    LitFloat is a distinct type is so downstream consumers (the host
+    primitive registry, the mlog emitter, the LSP hover) can render
+    the value as a Python ``float`` instead of an ``int``. The host
+    pushes ``self.value`` directly onto the data stack; the mlog
+    emitter lowers it to ``set s<i> <value>`` using ``repr(value)``
+    (mlog accepts Python's decimal/scientific float repr verbatim).
+    """
+
+    value: float
+    src_loc: SrcLoc
+
+
+@dataclass(frozen=True)
 class LitStr:
     value: str
     src_loc: SrcLoc
@@ -93,7 +110,7 @@ class VarRef:
     src_loc: SrcLoc
 
 
-Term = Union[LitInt, LitStr, WordCall, IfThen, Begin, DoLoop, VarRef]
+Term = Union[LitInt, LitFloat, LitStr, WordCall, IfThen, Begin, DoLoop, VarRef]
 
 
 @dataclass
@@ -247,6 +264,10 @@ class _Parser:
             self._advance()
             return LitInt(value=tok.value, src_loc=_loc(tok))
 
+        if tok.kind == TokenKind.FLOAT:
+            self._advance()
+            return LitFloat(value=tok.value, src_loc=_loc(tok))
+
         if tok.kind in (TokenKind.STRING_DOT_QUOTE, TokenKind.STRING_S_QUOTE):
             self._advance()
             return LitStr(value=tok.value, src_loc=_loc(tok))
@@ -394,6 +415,7 @@ __all__ = [
     "DoLoop",
     "IfThen",
     "LexError",
+    "LitFloat",
     "LitInt",
     "LitStr",
     "ParseError",

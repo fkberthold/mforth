@@ -408,3 +408,165 @@ def test_effect_comment_location_is_opening_paren():
     eff = [t for t in toks if t.kind == TokenKind.EFFECT_COMMENT]
     assert eff[0].line == 1
     assert eff[0].col == 3  # the '(' starts at col 3
+
+
+# ---------------------------------------------------------------------------
+# Float literals (bead mforth-xk7) — v1 dialect gap fill
+#
+# Contract: a whitespace-delimited token matching
+# ``^-?\d+\.\d+(?:[eE][-+]?\d+)?$`` is a FLOAT with a Python ``float`` value.
+# Disambiguation:
+#   * ``3.14`` → one FLOAT token, value 3.14 (NOT three tokens).
+#   * ``3 . 14`` → three tokens (NUMBER ``3``, WORD ``.``, NUMBER ``14``)
+#     because whitespace separates them — the existing whitespace-split
+#     rule does this for free; this test pins it as a regression guard.
+#   * ``3.`` / ``.5`` / ``3.14.15`` → NOT a float literal. They are
+#     whitespace-delimited tokens that fail both the int and float regexes
+#     and so fall through to WORD. Downstream dictionary resolution will
+#     reject them — that's the "error" path called out in the bead.
+# ---------------------------------------------------------------------------
+
+
+def test_simple_float_literal():
+    toks = lex("3.14")
+    assert toks[0].kind == TokenKind.FLOAT
+    assert toks[0].text == "3.14"
+    assert toks[0].value == 3.14
+    assert isinstance(toks[0].value, float)
+
+
+def test_float_less_than_one():
+    toks = lex("0.95")
+    assert toks[0].kind == TokenKind.FLOAT
+    assert toks[0].value == 0.95
+
+
+def test_negative_float():
+    toks = lex("-2.5")
+    assert toks[0].kind == TokenKind.FLOAT
+    assert toks[0].value == -2.5
+
+
+def test_positive_signed_float():
+    toks = lex("+1.5")
+    assert toks[0].kind == TokenKind.FLOAT
+    assert toks[0].value == 1.5
+
+
+def test_integer_valued_float():
+    # `1.0` MUST be lexed as FLOAT (has the trailing `.0`), not NUMBER.
+    # Per mforth-05h, PRINT of an integer-valued float renders as "1" —
+    # the host-side rule sees a float and applies `int()` coercion. This
+    # is the float case that exercises that integration.
+    toks = lex("1.0")
+    assert toks[0].kind == TokenKind.FLOAT
+    assert toks[0].value == 1.0
+    assert isinstance(toks[0].value, float)
+
+
+def test_float_with_scientific_notation():
+    # Scientific notation IN scope per claim-time decision (bead's regex
+    # explicitly allows `[eE][-+]?\d+`). Cheap to support; mlog accepts
+    # the same form verbatim.
+    toks = lex("1.5e3")
+    assert toks[0].kind == TokenKind.FLOAT
+    assert toks[0].value == 1500.0
+
+
+def test_float_with_negative_exponent():
+    toks = lex("1.0e-3")
+    assert toks[0].kind == TokenKind.FLOAT
+    assert toks[0].value == 0.001
+
+
+def test_float_with_positive_exponent():
+    toks = lex("2.5E+2")
+    assert toks[0].kind == TokenKind.FLOAT
+    assert toks[0].value == 250.0
+
+
+def test_three_space_separated_tokens_dot_word_in_middle():
+    # `3 . 14` is THREE whitespace-separated tokens:
+    #   NUMBER 3, WORD ".", NUMBER 14.
+    # This is the disambiguation pin called out in the bead's acceptance.
+    toks = lex("3 . 14")
+    kinds = [t.kind for t in toks[:-1]]
+    texts = [t.text for t in toks[:-1]]
+    assert kinds == [TokenKind.NUMBER, TokenKind.WORD, TokenKind.NUMBER]
+    assert texts == ["3", ".", "14"]
+
+
+def test_dot_alone_is_word():
+    # `.` standalone is the Forth pop-and-print word. Float-literal
+    # support MUST NOT swallow it.
+    toks = lex(".")
+    assert toks[0].kind == TokenKind.WORD
+    assert toks[0].text == "."
+
+
+def test_trailing_dot_is_word_not_float():
+    # `3.` has no fractional digits → not a float by our regex.
+    # Falls through to WORD; downstream resolves to "unknown word".
+    toks = lex("3.")
+    assert toks[0].kind == TokenKind.WORD
+    assert toks[0].text == "3."
+
+
+def test_leading_dot_is_word_not_float():
+    # `.5` has no integral digits → not a float by our regex.
+    # Falls through to WORD.
+    toks = lex(".5")
+    assert toks[0].kind == TokenKind.WORD
+    assert toks[0].text == ".5"
+
+
+def test_two_dots_is_word_not_float():
+    # `3.14.15` is malformed — extra dot. Not a float; falls to WORD.
+    toks = lex("3.14.15")
+    assert toks[0].kind == TokenKind.WORD
+    assert toks[0].text == "3.14.15"
+
+
+def test_float_carries_source_location():
+    toks = lex("  3.14")
+    assert toks[0].kind == TokenKind.FLOAT
+    assert toks[0].line == 1
+    assert toks[0].col == 3
+
+
+def test_multiple_floats_and_ints_mixed():
+    toks = lex("1 2.5 3 -0.5 +4")
+    kinds = [t.kind for t in toks[:-1]]
+    values = [t.value for t in toks[:-1]]
+    assert kinds == [
+        TokenKind.NUMBER,
+        TokenKind.FLOAT,
+        TokenKind.NUMBER,
+        TokenKind.FLOAT,
+        TokenKind.NUMBER,
+    ]
+    assert values == [1, 2.5, 3, -0.5, 4]
+
+
+def test_float_inside_definition():
+    # Floats must work inside `: name ... ;` definitions too.
+    toks = lex(": area 3.14 * ;")
+    kinds = [t.kind for t in toks]
+    assert kinds == [
+        TokenKind.COLON,
+        TokenKind.WORD,
+        TokenKind.FLOAT,
+        TokenKind.WORD,
+        TokenKind.SEMICOLON,
+        TokenKind.EOF,
+    ]
+    assert toks[2].value == 3.14
+
+
+def test_integer_unchanged_by_float_addition():
+    # Pure-integer literals MUST still lex as NUMBER (int), not FLOAT.
+    # Regression guard for the int-first-or-float-first ordering.
+    toks = lex("42")
+    assert toks[0].kind == TokenKind.NUMBER
+    assert toks[0].value == 42
+    assert isinstance(toks[0].value, int)
