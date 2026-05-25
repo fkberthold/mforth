@@ -42,6 +42,12 @@ class TokenKind(Enum):
     LINE_COMMENT = "LINE_COMMENT"
     STRING_DOT_QUOTE = "STRING_DOT_QUOTE"
     STRING_S_QUOTE = "STRING_S_QUOTE"
+    # EFFECT_COMMENT is emitted for `( inputs -- outputs )` style paren
+    # comments containing a standalone `--` token. Plain paren comments
+    # (no `--`) are still discarded. The parser uses EFFECT_COMMENT to
+    # attach declared stack effects to `:` definitions (bead mforth-6dh).
+    # `value` carries the parsed `(in_arity, out_arity)` tuple.
+    EFFECT_COMMENT = "EFFECT_COMMENT"
     EOF = "EOF"
 
 
@@ -140,19 +146,42 @@ def tokenize(src: str, file: str = "<unknown>") -> Iterator[Token]:
             paren_line, paren_col = start_line, start_col
             advance()  # consume opening '('
             depth = 1
+            body_chars: list[str] = []
             while i < n and depth > 0:
                 c = src[i]
                 if c == "(" and (peek(-1) == "" or _is_ws(peek(-1))):
                     depth += 1
+                    body_chars.append(c)
                     advance()
                 elif c == ")":
                     depth -= 1
+                    if depth > 0:
+                        body_chars.append(c)
                     advance()
                 else:
+                    body_chars.append(c)
                     advance()
             if depth > 0:
                 raise LexError(
                     "unterminated '(' comment", file, paren_line, paren_col
+                )
+            # Stack-effect comment: paren body contains a standalone `--`
+            # token surrounded by whitespace (or at the ends). Emit an
+            # EFFECT_COMMENT carrying (in_arity, out_arity); plain paren
+            # comments without `--` continue to be discarded.
+            body = "".join(body_chars)
+            parts = body.split()
+            if "--" in parts:
+                sep = parts.index("--")
+                in_names = parts[:sep]
+                out_names = parts[sep + 1:]
+                yield Token(
+                    TokenKind.EFFECT_COMMENT,
+                    "(" + body + ")",
+                    file,
+                    paren_line,
+                    paren_col,
+                    value=(len(in_names), len(out_names)),
                 )
             continue
 

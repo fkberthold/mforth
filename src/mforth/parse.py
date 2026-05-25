@@ -101,6 +101,12 @@ class Definition:
     name: str
     body: list
     src_loc: SrcLoc
+    # Optional declared stack effect from a `( inputs -- outputs )` comment
+    # immediately after the `:` name. `None` means no declared effect (the
+    # stack-checker stays permissive on this definition); a `(in, out)`
+    # tuple means stackcheck must verify the inferred effect matches.
+    # See bead mforth-6dh.
+    declared_effect: "tuple[int, int] | None" = None
 
 
 @dataclass
@@ -164,6 +170,10 @@ class _Parser:
             tok = self._peek()
             if tok.kind == TokenKind.COLON:
                 definitions.append(self._parse_definition())
+            elif tok.kind == TokenKind.EFFECT_COMMENT:
+                # Top-level effect-shaped comments aren't attached to
+                # anything — they're just comments and get skipped.
+                self._advance()
             else:
                 main.append(self._parse_term())
         return Program(definitions=definitions, main=main)
@@ -184,6 +194,15 @@ class _Parser:
                 self.file, colon.line, colon.col,
             )
         self._advance()
+        # Optional declared stack effect: `( inputs -- outputs )` comment
+        # immediately after the name. The lexer has already parsed the
+        # arities and attached them as `.value = (in, out)`. Anywhere else
+        # in the body an EFFECT_COMMENT is just a comment and is skipped
+        # in `_parse_term` (see below). See bead mforth-6dh.
+        declared_effect: tuple[int, int] | None = None
+        if self._peek().kind == TokenKind.EFFECT_COMMENT:
+            effect_tok = self._advance()
+            declared_effect = effect_tok.value
         self._in_definition = True
         body: list[Term] = []
         try:
@@ -202,10 +221,22 @@ class _Parser:
                         "nested ':' definitions are not allowed",
                         self.file, tok.line, tok.col,
                     )
+                if tok.kind == TokenKind.EFFECT_COMMENT:
+                    # Mid-body effect-shaped comments are treated as plain
+                    # comments — they don't override the declared effect
+                    # from the opener position, and they don't emit AST
+                    # nodes. Just skip.
+                    self._advance()
+                    continue
                 body.append(self._parse_term())
         finally:
             self._in_definition = False
-        return Definition(name=name_tok.text, body=body, src_loc=_loc(colon))
+        return Definition(
+            name=name_tok.text,
+            body=body,
+            src_loc=_loc(colon),
+            declared_effect=declared_effect,
+        )
 
     # --- terms ------------------------------------------------------------
 

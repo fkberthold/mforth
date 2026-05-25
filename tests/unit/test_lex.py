@@ -342,3 +342,69 @@ def test_lex_error_carries_full_location_on_multi_line_input():
     assert err.line == 3
     assert err.col == 3  # the `."` starts at col 3 of line 3
     assert "x.fs:3:3" in str(err)
+
+
+# ---------------------------------------------------------------------------
+# Stack-effect comments (paren comment containing '--' → EFFECT_COMMENT token)
+# ---------------------------------------------------------------------------
+# Bead mforth-6dh. Forth tradition: `( inputs -- outputs )` after `:` opener
+# is a stack-effect declaration. mforth's parser uses it to enforce the
+# declared effect against the inferred effect (Option B from the bead).
+#
+# The lexer emits an EFFECT_COMMENT token instead of discarding when the
+# paren-comment body contains a standalone `--` token. Regular `( ... )`
+# comments without `--` continue to be discarded as before.
+
+
+def test_effect_comment_emits_token():
+    toks = lex(": foo ( -- ) ;")
+    kinds = [t.kind for t in toks]
+    assert TokenKind.EFFECT_COMMENT in kinds
+
+
+def test_effect_comment_carries_arities():
+    toks = lex("( a b -- c )")
+    eff = [t for t in toks if t.kind == TokenKind.EFFECT_COMMENT]
+    assert len(eff) == 1
+    # value carries (in_arity, out_arity)
+    assert eff[0].value == (2, 1)
+
+
+def test_effect_comment_zero_arities():
+    toks = lex("( -- )")
+    eff = [t for t in toks if t.kind == TokenKind.EFFECT_COMMENT]
+    assert len(eff) == 1
+    assert eff[0].value == (0, 0)
+
+
+def test_effect_comment_inputs_only():
+    toks = lex("( a -- )")
+    eff = [t for t in toks if t.kind == TokenKind.EFFECT_COMMENT]
+    assert eff[0].value == (1, 0)
+
+
+def test_effect_comment_outputs_only():
+    toks = lex("( -- a )")
+    eff = [t for t in toks if t.kind == TokenKind.EFFECT_COMMENT]
+    assert eff[0].value == (0, 1)
+
+
+def test_effect_comment_multi_word_names():
+    toks = lex("( foo-bar baz -- qux quux )")
+    eff = [t for t in toks if t.kind == TokenKind.EFFECT_COMMENT]
+    assert eff[0].value == (2, 2)
+
+
+def test_non_effect_paren_comment_still_discarded():
+    # No `--` → ordinary comment, discarded.
+    toks = lex("1 ( hello world ) 2")
+    kinds = [t.kind for t in toks]
+    assert TokenKind.EFFECT_COMMENT not in kinds
+    assert kinds == [TokenKind.NUMBER, TokenKind.NUMBER, TokenKind.EOF]
+
+
+def test_effect_comment_location_is_opening_paren():
+    toks = lex("  ( -- )")
+    eff = [t for t in toks if t.kind == TokenKind.EFFECT_COMMENT]
+    assert eff[0].line == 1
+    assert eff[0].col == 3  # the '(' starts at col 3
