@@ -9,7 +9,7 @@ VARIABLE counter
 
 : tick ( -- )
   counter @ 1 + counter !
-  ." count="
+  ." count=" PRINT
   counter @ PRINT
   display PRINTFLUSH
   1 WAIT

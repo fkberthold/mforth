@@ -369,3 +369,49 @@ def test_lex_error_propagates_through_parser():
 
     with pytest.raises(LexError):
         p('." unterminated')
+
+
+# ---------------------------------------------------------------------------
+# Declared stack-effect comments on `:` definitions (mforth-6dh)
+# ---------------------------------------------------------------------------
+# A paren-comment containing `--` that immediately follows the `:` name
+# is parsed as a declared stack effect and attached to the Definition as
+# `declared_effect = (in_arity, out_arity)`. Stack-effect comments anywhere
+# else (in main body, inside a `:` body, before the name) are treated as
+# plain comments and discarded.
+
+
+def test_definition_captures_declared_effect():
+    prog = p(": square ( a -- b ) dup * ;")
+    defn = prog.definitions[0]
+    assert defn.declared_effect == (1, 1)
+
+
+def test_definition_without_declared_effect_is_none():
+    prog = p(": square dup * ;")
+    defn = prog.definitions[0]
+    assert defn.declared_effect is None
+
+
+def test_definition_with_zero_zero_effect():
+    prog = p(": noop ( -- ) ;")
+    defn = prog.definitions[0]
+    assert defn.declared_effect == (0, 0)
+
+
+def test_effect_comment_inside_body_is_just_a_comment():
+    # An effect-shaped comment INSIDE the body is not a declared effect —
+    # it's discarded like any other comment, and the definition has no
+    # declared_effect attached.
+    prog = p(": foo dup ( a -- a a ) drop ;")
+    defn = prog.definitions[0]
+    assert defn.declared_effect is None
+
+
+def test_effect_comment_in_main_is_ignored():
+    # Stack-effect comments at top level don't attach to anything; they
+    # parse cleanly and the main body is unaffected.
+    prog = p("1 ( a -- b ) 2 +")
+    # No definitions; main has [1, 2, +]
+    assert prog.definitions == []
+    assert len(prog.main) == 3

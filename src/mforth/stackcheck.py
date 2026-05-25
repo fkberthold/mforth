@@ -141,6 +141,21 @@ def stackcheck(
             depth, min_depth, _ = simulate(defn.body, initial_depth=0)
             in_arity = max(0, -min_depth)
             out_arity = depth + in_arity
+            # Bead mforth-6dh: if the user declared a stack effect via a
+            # `( in -- out )` comment after `:` name, verify the inferred
+            # effect matches. The names inside the comment are doc-only;
+            # only the counts are enforced. No declared effect = no check
+            # (preserves the v1 permissive behavior; additive change).
+            declared = getattr(defn, "declared_effect", None)
+            if declared is not None:
+                d_in, d_out = declared
+                if (d_in, d_out) != (in_arity, out_arity):
+                    raise StackError(
+                        f"definition '{defn.name}' declared stack effect "
+                        f"( {d_in} -- {d_out} ) but inferred "
+                        f"( {in_arity} -- {out_arity} )",
+                        defn.src_loc,
+                    )
             effects[defn.name] = StackEffect(in_arity, out_arity)
             return in_arity, out_arity
         finally:

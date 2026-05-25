@@ -269,3 +269,104 @@ def test_if_mismatch_src_loc_points_at_if():
     assert exc.value.src_loc.line == 1
     # The mismatch is reported on the IfThen node; src_loc points at the IF
     assert exc.value.src_loc.col == 3
+
+
+# ---------------------------------------------------------------------------
+# Declared stack effect enforcement (mforth-6dh)
+# ---------------------------------------------------------------------------
+# A `( in -- out )` comment after the `:` name is a declared stack effect.
+# Stackcheck verifies the inferred effect matches the declared one. Mismatch
+# raises StackError naming the word, declared, and inferred effects.
+#
+# A definition with NO declared effect retains the current permissive
+# behavior (additive change, not breaking).
+
+
+def test_declared_effect_matches_inferred_no_error():
+    # square: ( a -- b ), dup * → in_arity=1, out_arity=1. Matches.
+    result = check(": square ( a -- b ) dup * ;")
+    assert result.effects["square"] == StackEffect(1, 1)
+
+
+def test_declared_effect_zero_zero_matches_noop():
+    result = check(": noop ( -- ) ;")
+    assert result.effects["noop"] == StackEffect(0, 0)
+
+
+def test_declared_zero_outputs_but_body_produces_one_errors():
+    # body pushes 1 → inferred ( -- a ); declared ( -- ) leaks a value.
+    # This is the blink.fs class of bug.
+    with pytest.raises(StackError) as exc:
+        check(": leak ( -- ) 1 ;")
+    msg = str(exc.value).lower()
+    assert "leak" in msg
+    assert "declared" in msg
+    assert "inferred" in msg
+
+
+def test_declared_one_input_but_body_consumes_none_errors():
+    # declared ( a -- ); body consumes nothing.
+    with pytest.raises(StackError) as exc:
+        check(": noop ( a -- ) ;")
+    assert "noop" in str(exc.value)
+
+
+def test_declared_more_outputs_than_body_produces_errors():
+    # declared ( -- a b ); body produces only 1
+    with pytest.raises(StackError) as exc:
+        check(": one ( -- a b ) 1 ;")
+    assert "one" in str(exc.value)
+
+
+def test_declared_inputs_mismatch_errors():
+    # declared ( a b -- c ); body is dup * which is (1, 1)
+    with pytest.raises(StackError) as exc:
+        check(": badsquare ( a b -- c ) dup * ;")
+    assert "badsquare" in str(exc.value)
+
+
+def test_no_declared_effect_permissive_behavior_preserved():
+    # Without a declared effect a definition with leftover stack still
+    # checks fine — this is the v1 permissive behavior and we don't
+    # break it.
+    result = check(": leak 1 ;")
+    assert result.effects["leak"] == StackEffect(0, 1)
+
+
+def test_blink_pattern_caught_by_declared_effect():
+    # The exact symptom from mforth-6dh: a definition declares ( -- )
+    # but the body pushes a string literal that's never consumed.
+    src = ': tick ( -- ) ." count=" ;'
+    with pytest.raises(StackError) as exc:
+        check(src)
+    msg = str(exc.value)
+    assert "tick" in msg
+    # The error should communicate the actual leak shape.
+    assert "0" in msg  # declared 0 outputs
+    assert "1" in msg  # inferred 1 output
+
+
+def test_declared_effect_matches_inputs_only():
+    # ( a -- ) declares a one-in, zero-out word; matches drop.
+    result = check(": eat ( a -- ) drop ;")
+    assert result.effects["eat"] == StackEffect(1, 0)
+
+
+def test_declared_effect_matches_outputs_only():
+    # ( -- a ) declares a zero-in, one-out word; matches a const pusher.
+    result = check(": one ( -- a ) 1 ;")
+    assert result.effects["one"] == StackEffect(0, 1)
+
+
+def test_declared_effect_matches_two_in_one_out():
+    # ( a b -- c ) declares a binary operator-shaped word.
+    result = check(": plus ( a b -- c ) + ;")
+    assert result.effects["plus"] == StackEffect(2, 1)
+
+
+def test_declared_effect_error_carries_src_loc():
+    src = ': tick ( -- ) ." leak" ;'
+    with pytest.raises(StackError) as exc:
+        check(src, file="blink.fs")
+    err = exc.value
+    assert err.src_loc.file == "blink.fs"

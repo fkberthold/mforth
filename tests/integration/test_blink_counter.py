@@ -108,8 +108,13 @@ def _run_example(name: str, *, iterations: int) -> Runner:
 
 def test_blink_runs_five_iterations_against_real_sidecar():
     """The bead's headline contract: 5 ticks of blink produce 5 print
-    flushes, 5 prints, 5 waits — the exact event-count pattern an
-    in-game observer would see on the message block over 5 wall-seconds.
+    flushes, 10 prints (the ``." count="`` prefix + the counter value),
+    5 waits — the exact event-count pattern an in-game observer would
+    see on the message block over 5 wall-seconds.
+
+    Per mforth-6dh: blink.fs now emits ``." count=" PRINT`` then
+    ``counter @ PRINT`` so the prefix is properly drained into the same
+    PRINTFLUSH as the counter value (was previously a leak).
     """
     runner = _run_example("blink", iterations=5)
     events = list(runner.executor.world.events)
@@ -118,23 +123,18 @@ def test_blink_runs_five_iterations_against_real_sidecar():
     flushes = [e for e in events if isinstance(e, MessagePrintflushEvent)]
     waits = [e for e in events if isinstance(e, WaitEvent)]
 
-    assert len(prints) == 5, f"expected 5 PRINTs, got {len(prints)}"
+    assert len(prints) == 10, f"expected 10 PRINTs (prefix+value × 5), got {len(prints)}"
     assert len(flushes) == 5, f"expected 5 PRINTFLUSHes, got {len(flushes)}"
     assert len(waits) == 5, f"expected 5 WAITs, got {len(waits)}"
 
 
 def test_blink_printed_values_increment_monotonically():
-    """Each iteration's PRINT carries the post-increment value of the
-    ``counter`` variable. 5 iterations → "1.0", "2.0", "3.0", "4.0",
-    "5.0".
+    """The printed text alternates between the static ``count=`` prefix
+    and the post-increment counter value, with PRINTFLUSH draining each
+    "count=N" buffer to the message block per iteration.
 
-    NOTE: the printed text is "1.0" (Python float stringification), NOT
-    "1" (mlog integer stringification). See module docstring for the
-    REPL↔mlog text divergence — filed as a P2 follow-up bead.
-
-    NOTE: the printed text does NOT carry the ``." count="`` prefix —
-    blink.fs's source leaks that literal onto the stack and never
-    flushes it. Tracked by mforth-6dh; tests update when that lands.
+    Per mforth-6dh: the ``." count="`` prefix is now drained by an
+    explicit PRINT (was previously leaked onto the data stack).
     """
     runner = _run_example("blink", iterations=5)
     prints = [
@@ -142,15 +142,23 @@ def test_blink_printed_values_increment_monotonically():
         if isinstance(e, MessagePrintEvent)
     ]
     texts = [e.text for e in prints]
-    assert texts == ["1", "2", "3", "4", "5"], (
-        f"counter sequence drifted: {texts}"
-    )
+    assert texts == [
+        "count=", "1",
+        "count=", "2",
+        "count=", "3",
+        "count=", "4",
+        "count=", "5",
+    ], f"counter sequence drifted: {texts}"
 
 
 def test_blink_flush_targets_display_block_with_value_only():
     """Each PRINTFLUSH targets the sidecar-bound ``display`` block (the
     mforth-name from ``blink.world.toml``'s ``[links.display]`` table)
-    and carries the just-printed value as its buffer payload.
+    and carries the concatenated prefix + counter value as its buffer
+    payload — e.g. "count=1", "count=2", ...
+
+    Per mforth-6dh: the prefix is now part of the flushed buffer (was
+    previously leaked onto the data stack).
     """
     runner = _run_example("blink", iterations=3)
     flushes = [
@@ -160,7 +168,7 @@ def test_blink_flush_targets_display_block_with_value_only():
     assert all(e.block_name == "display" for e in flushes), (
         f"unexpected block_name: {[e.block_name for e in flushes]}"
     )
-    assert [e.buffer for e in flushes] == ["1", "2", "3"]
+    assert [e.buffer for e in flushes] == ["count=1", "count=2", "count=3"]
 
 
 def test_blink_wait_advances_world_clock_one_second_per_tick():
@@ -181,15 +189,15 @@ def test_blink_per_iteration_event_shape_is_exact():
 
         VariableReadEvent('counter')    # counter @
         VariableWriteEvent('counter')   # 1 + counter !
+        MessagePrintEvent               # ." count=" PRINT
         VariableReadEvent('counter')    # counter @
         MessagePrintEvent               # PRINT
         MessagePrintflushEvent          # display PRINTFLUSH
         WaitEvent                       # 1 WAIT
 
-    The ``." count="`` literal pushes a string onto the data stack but
-    emits NO event (literals are stack-only). The leak (mforth-6dh) is
-    invisible at the event-stream level — it only shows up as the
-    "missing prefix" in MessagePrintEvent.text.
+    Per mforth-6dh: the ``." count="`` prefix is now drained by an
+    explicit PRINT (was previously leaked onto the data stack), so the
+    event shape carries TWO MessagePrintEvents per iteration.
     """
     runner = _run_example("blink", iterations=1)
     events = list(runner.executor.world.events)
@@ -197,6 +205,7 @@ def test_blink_per_iteration_event_shape_is_exact():
     assert classes == [
         "VariableReadEvent",
         "VariableWriteEvent",
+        "MessagePrintEvent",
         "VariableReadEvent",
         "MessagePrintEvent",
         "MessagePrintflushEvent",
