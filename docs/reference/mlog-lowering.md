@@ -36,6 +36,7 @@ pass, see `sidecar-schema.md`.
 | Forth | mlog | Notes |
 |-------|------|-------|
 | `<int>`        | `set s<i> <int>`        | (0, 1). `<int>` is rendered via Python `str(value)`. |
+| `<float>`      | `set s<i> <float>`      | (0, 1). Decimal-with-fractional-digits literal (e.g. `0.95`, `3.14`, `-2.5`, `1.0e-3`). Bead mforth-xk7. Rendered via Python `repr(value)` so the operand round-trips through mlog's tokenizer cleanly (decimal for ordinary magnitudes; scientific form for very small/large). |
 | `S" <text>"`   | `set s<i> "<text>"`     | (0, 1). Quotes preserved in the operand. mlog's `set` accepts a quoted-string r-value. |
 
 A literal inside a Mindustry-primitive lifting window (`<lit> PRINT`,
@@ -164,14 +165,16 @@ a `UserVariable` (sidecar-pre-seeded link name), or an `@-identifier`
 immediately precedes a Mindustry primitive. The match folds operands
 into the primitive instruction and elides the staging `set`.
 
-Selection rules: `PRINT` accepts any of LitInt/LitStr/UserVariable/
-@-identifier; `PRINTFLUSH` accepts LitStr/UserVariable/@-identifier
-(no LitInt — numeric block handles are nonsense); `SENSOR` accepts
-any block-source for operand 1 and LitStr/@-identifier for operand 2.
+Selection rules: `PRINT` accepts any of LitInt/LitFloat/LitStr/
+UserVariable/@-identifier; `PRINTFLUSH` accepts LitStr/UserVariable/
+@-identifier (no LitInt/LitFloat — numeric block handles are
+nonsense); `SENSOR` accepts any block-source for operand 1 and
+LitStr/@-identifier for operand 2.
 
 | Forth | mlog | Notes |
 |-------|------|-------|
 | `<int> PRINT`           | `print <int>`              | Literal lift. |
+| `<float> PRINT`         | `print <float>`            | Float-literal lift (bead mforth-xk7). `<float>` rendered via Python `repr()` to match the slot-form lowering. |
 | `S" <text>" PRINT`      | `print "<text>"`           | Quotes preserved. |
 | `<linkname> PRINT`      | `print <linkname>`         | UserVariable lift. After Mode A sidecar substitution, `<linkname>` becomes the in-game name. |
 | `@<id> PRINT`           | `print @<id>`              | @-identifier lift (magic var, content, sensor prop). |

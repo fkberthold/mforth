@@ -28,6 +28,7 @@ from mforth.parse import (
     Definition,
     DoLoop,
     IfThen,
+    LitFloat,
     LitInt,
     LitStr,
     Program,
@@ -96,6 +97,15 @@ def test_litint_pushes_value():
     program = Program(main=[LitInt(value=42, src_loc=L())])
     ex = run_program(program)
     assert ex.data_stack == [42]
+
+
+def test_litfloat_pushes_python_float():
+    # Host-side LitFloat (bead mforth-xk7) pushes a Python float —
+    # already the runtime type used by SENSOR returns and `/` division.
+    program = Program(main=[LitFloat(value=0.95, src_loc=L())])
+    ex = run_program(program)
+    assert ex.data_stack == [0.95]
+    assert isinstance(ex.data_stack[0], float)
 
 
 def test_litstr_pushes_string_handle():

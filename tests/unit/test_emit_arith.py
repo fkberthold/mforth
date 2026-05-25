@@ -117,6 +117,45 @@ def test_acceptance_arithmetic_pipeline():
     ]
 
 
+def test_litfloat_lowers_to_set_with_repr():
+    """Float-literal lowering (bead mforth-xk7).
+
+    ``LitFloat(0.95)`` at write-slot s<i> emits ``("set", "s<i>",
+    "0.95")`` — using Python's ``repr()`` so the operand round-trips
+    through mlog's tokenizer cleanly. The slot-form (not the PRINT
+    lift) fires when no immediate PRINT follows.
+    """
+    instrs = compile_to_tuples("0.95 DROP")
+    # DROP is a no-op in the emit pass (the slot pointer advances),
+    # so only the literal set survives.
+    assert instrs == [
+        (None, "set", ("s0", "0.95")),
+    ]
+
+
+def test_litfloat_arithmetic_with_int():
+    """Mixing float + int literals exercises the LitFloat emit path
+    alongside the existing LitInt one."""
+    instrs = compile_to_tuples("4 0.25 *")
+    assert instrs == [
+        (None, "set", ("s0", "4")),
+        (None, "set", ("s1", "0.25")),
+        (None, "op", ("mul", "s0", "s0", "s1")),
+    ]
+
+
+def test_litfloat_print_lift():
+    """The PRINT lift extends to LitFloat — ``0.95 PRINT`` emits a
+    single ``print 0.95`` rather than the slot-form ``set s0 0.95;
+    print s0``. ``repr()`` is used so the operand matches the slot
+    form's lowering verbatim, keeping REPL ↔ mlog event-stream
+    equivalence regardless of which path the codegen picks."""
+    instrs = compile_to_tuples("0.95 PRINT")
+    assert instrs == [
+        (None, "print", ("0.95",)),
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Literals
 # ---------------------------------------------------------------------------

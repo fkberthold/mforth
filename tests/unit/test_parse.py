@@ -17,6 +17,7 @@ from mforth.parse import (
     Definition,
     DoLoop,
     IfThen,
+    LitFloat,
     LitInt,
     LitStr,
     ParseError,
@@ -80,6 +81,78 @@ def test_s_quote_string_becomes_litstr():
     prog = p('S" world"')
     assert isinstance(prog.main[0], LitStr)
     assert prog.main[0].value == "world"
+
+
+# ---------------------------------------------------------------------------
+# Float literals (bead mforth-xk7)
+# ---------------------------------------------------------------------------
+
+
+def test_single_float_in_main():
+    prog = p("3.14")
+    assert prog.definitions == []
+    assert len(prog.main) == 1
+    assert isinstance(prog.main[0], LitFloat)
+    assert prog.main[0].value == 3.14
+    assert isinstance(prog.main[0].value, float)
+
+
+def test_float_literal_carries_src_loc():
+    prog = p("  0.95")
+    assert isinstance(prog.main[0], LitFloat)
+    assert prog.main[0].src_loc.line == 1
+    assert prog.main[0].src_loc.col == 3
+
+
+def test_float_and_int_mixed():
+    prog = p("1 2.5 +")
+    assert [type(t).__name__ for t in prog.main] == ["LitInt", "LitFloat", "WordCall"]
+    assert prog.main[0].value == 1
+    assert prog.main[1].value == 2.5
+    assert prog.main[2].name == "+"
+
+
+def test_float_in_definition_body():
+    prog = p(": scale 0.95 * ;")
+    d = prog.definitions[0]
+    assert d.name == "scale"
+    assert isinstance(d.body[0], LitFloat) and d.body[0].value == 0.95
+    assert isinstance(d.body[1], WordCall) and d.body[1].name == "*"
+
+
+def test_negative_float_in_main():
+    prog = p("-1.5")
+    assert isinstance(prog.main[0], LitFloat)
+    assert prog.main[0].value == -1.5
+
+
+def test_scientific_float_in_main():
+    prog = p("1.0e-3")
+    assert isinstance(prog.main[0], LitFloat)
+    assert prog.main[0].value == 0.001
+
+
+def test_three_token_dot_decomposition_stays_three_terms():
+    # Negative case: `3 . 14` (whitespace-separated) must NOT collapse
+    # into a single LitFloat. The lex layer keeps them as three tokens;
+    # the parser must produce LitInt, WordCall("."), LitInt — not one
+    # LitFloat(3.14).
+    prog = p("3 . 14")
+    assert [type(t).__name__ for t in prog.main] == ["LitInt", "WordCall", "LitInt"]
+    assert prog.main[0].value == 3
+    assert prog.main[1].name == "."
+    assert prog.main[2].value == 14
+
+
+def test_trailing_dot_falls_through_to_word():
+    # Negative case: `3.` is not a float by the regex (no fractional
+    # digits). It lexes as WORD and the parser produces a WordCall.
+    # Dictionary resolution downstream will fail it as unknown — which
+    # is the "error" path called out in the bead's acceptance bullet.
+    prog = p("3.")
+    assert len(prog.main) == 1
+    assert isinstance(prog.main[0], WordCall)
+    assert prog.main[0].name == "3."
 
 
 def test_word_call_preserves_name_and_loc():

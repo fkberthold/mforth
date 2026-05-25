@@ -33,6 +33,18 @@ def test_check_literal_only():
     check("42")
 
 
+def test_check_float_literal_pushes_one_slot():
+    # LitFloat has the same ( -- f ) effect as LitInt ( -- n ).
+    # Stack-neutral after a DROP, the way an int literal would be.
+    check("3.14 DROP")
+
+
+def test_check_float_literal_can_drive_arithmetic():
+    # Mixing float and int literals works at the stack-effect level;
+    # both push one cell.
+    check("1 2.5 +")
+
+
 def test_check_simple_arithmetic():
     check("1 2 +")
 

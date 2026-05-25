@@ -68,6 +68,16 @@ division. This is a load-bearing dialect choice — the host REPL uses Python's
 `/`, the mlog backend matches. Division by zero produces `inf` / `-inf` / `nan`
 without raising; matches mlog's silent-on-error behaviour.
 
+Source-level **integer** and **float** literals are both first-class. Integer
+literals (`42`, `-7`, `+13`) lex as `LitInt`; decimal literals with at least
+one digit on each side of the `.` (and optional `[eE][-+]?\d+` exponent)
+lex as `LitFloat` — `0.95`, `3.14`, `-2.5`, `1.0e-3` (bead mforth-xk7). Both
+have stack effect `( -- n )` / `( -- f )` and lower to `set s<i> <value>`.
+The Forth `.` (pop-and-print) word stays a separate token because
+whitespace-delimited tokenization keeps `3 . 14` as three tokens; the
+disallowed shapes `3.` / `.5` / `3.14.15` fall through to `WordCall` and
+fail dictionary resolution.
+
 | Name | Stack effect | Semantic | mlog form |
 | --- | --- | --- | --- |
 | `+` | `( a b -- a+b )` | add | `op add sN-1 sN-1 sN` |
