@@ -275,6 +275,216 @@ def test_emit_control_enabled_slot_form_fallback() -> None:
     assert ops[3:] == ("0", "0", "0")
 
 
+# ---------------------------------------------------------------------------
+# Stack-computed-value lifters (bead mforth-vdt) — block stays literal,
+# value comes from a slot. Targets USR's "All In" / "ConveyorBlock" / "Just
+# Charge" pattern where the flag is a hysteresis or threshold comparison
+# computed at runtime. The block operand MUST stay literal (cell-free v1
+# invariant — UserVariable on stack is forbidden); only the VALUE may come
+# from a slot, since mlog accepts a variable name in that operand position.
+# ---------------------------------------------------------------------------
+
+
+def test_emit_control_enabled_lifted_link_block_slot_value() -> None:
+    """`graphC <value-comp> CONTROL-ENABLED` → single
+    `control enabled graphC s<i> 0 0 0` line.
+
+    Forth stack order is `( block flag -- )` so source is block-first,
+    then flag-computation. The flag is computed inline (`3 2 >` here,
+    but in the USR All-In port it would be a SENSOR comparison). The
+    block is a sidecar link-uservar, kept literal in the emitted
+    instruction. Without this lift, v1's cell-free guard would refuse
+    the bare-uservar push of `graphC`.
+    """
+    instrs = _emit_source("graphC 3 2 > CONTROL-ENABLED", "graphC")
+    controls = [i for i in instrs if i[1] == "control"]
+    assert len(controls) == 1
+    (_, op, ops) = controls[0]
+    assert op == "control"
+    assert ops[0] == "enabled"
+    assert ops[1] == "graphC"  # block stays literal
+    assert ops[2].startswith("s")  # value from a slot
+    assert ops[3:] == ("0", "0", "0")
+
+
+def test_emit_control_config_lifted_at_id_block_slot_value() -> None:
+    """`@this <value-comp> CONTROL-CONFIG` lifts when block is an @-id."""
+    instrs = _emit_source("@this @copper @lead = CONTROL-CONFIG")
+    controls = [i for i in instrs if i[1] == "control"]
+    assert len(controls) == 1
+    (_, _, ops) = controls[0]
+    assert ops[0] == "config"
+    assert ops[1] == "@this"  # @-identifier block stays literal
+    assert ops[2].startswith("s")  # value from a slot
+    assert ops[3:] == ("0", "0", "0")
+
+
+def test_emit_control_config_lifted_litstr_block_slot_value() -> None:
+    """`S\" some-block\" <value-comp> CONTROL-CONFIG` lifts when block is a LitStr."""
+    instrs = _emit_source('S" generator1" @copper @lead = CONTROL-CONFIG')
+    controls = [i for i in instrs if i[1] == "control"]
+    assert len(controls) == 1
+    (_, _, ops) = controls[0]
+    assert ops[0] == "config"
+    assert ops[1] == "generator1"  # LitStr block stays literal (unquoted)
+    assert ops[2].startswith("s")
+    assert ops[3:] == ("0", "0", "0")
+
+
+def test_emit_control_enabled_slot_value_emits_two_instructions_not_more() -> None:
+    """The USR All-In headline metric: the lifted form keeps the total
+    instruction count at exactly (N_value_comp + 1), matching mlog hand-
+    written form. The `3 2 >` value comp is one `op greaterThan` plus the
+    two LitInt pushes (`set s1 3; set s2 2`) — 3 instructions — and then
+    the lifted CONTROL is 1 instruction. Total: 4.
+
+    Without the lift, the bare-uservar push of `graphC` would force the
+    v1 cell-free guard to refuse (no IF/ELSE inflation is even
+    available — the program would simply fail to compile). So the test
+    pins both correctness AND minimum-instruction-count.
+    """
+    instrs = _emit_source("graphC 3 2 > CONTROL-ENABLED", "graphC")
+    # Filter out labels/sentinels with no opcode.
+    real = [i for i in instrs if i[1] is not None]
+    # 2 LitInt pushes + 1 op greaterThan + 1 control = 4.
+    assert len(real) == 4, real
+
+
+def test_emit_control_config_lifted_with_litstr_value_still_prefers_3term_lift() -> (
+    None
+):
+    """When BOTH block and value are literal (existing 3-term lifter
+    territory), the 3-term lift still fires — the new 2-term lift does
+    NOT shadow the more-specific 3-term path. Pins that the existing
+    `sorter1 @copper CONTROL-CONFIG` test (and the All-Literal lift)
+    still emits a single instruction with literal value, not a slot.
+    """
+    instrs = _emit_source("sorter1 @copper CONTROL-CONFIG", "sorter1")
+    controls = [i for i in instrs if i[1] == "control"]
+    assert controls == [
+        (None, "control", ("config", "sorter1", "@copper", "0", "0", "0"))
+    ]
+
+
+def test_emit_control_enabled_block_uservar_alone_still_fails() -> None:
+    """Without a value already on stack, a bare `graphC CONTROL-ENABLED`
+    is a stack-effect violation (CONTROL-ENABLED is (2, 0); the bare
+    uservar push is (0, 1); net (1, 0) — underflow at the top-level
+    program). The new lifter must NOT mask this; stackcheck should
+    still raise.
+    """
+    from mforth.dictionary import UserVariable, resolve
+    from mforth.parse import SrcLoc
+    from mforth.stackcheck import StackError
+
+    program = parse("graphC CONTROL-ENABLED", file="<test>")
+    d = standard_dictionary()
+    d.add_variable(UserVariable(name="graphC", src_loc=SrcLoc("<test>", 1, 1)))
+    d = resolve(program, dictionary=d)
+    with pytest.raises(StackError):
+        stackcheck(program, dictionary=d)
+
+
+def test_emit_control_enabled_lifted_with_sensor_value() -> None:
+    """USR All-In's actual pattern: SENSOR-driven flag. Covers the
+    realistic case where the value-computation includes a SENSOR step
+    (which itself uses the (2,1) effect) followed by `>`.
+
+    Source:
+        base @itemCapacity SENSOR  base @graphite SENSOR  > CONTROL-ENABLED
+        ^^^^                        ^^^^                       ^- triggers lift
+        |                           |
+        block-uservar (graphC      another uservar push (base)
+        moved to head)              fused into the SENSOR @-prop lift
+
+    For test simplicity we pin a smaller shape:
+        graphC base @health SENSOR 50 > CONTROL-ENABLED
+    where `base` is a uservar (sensor source); SENSOR's @-prop lifter
+    handles the `base @health SENSOR` 3-term shape; the result writes
+    to a slot; the literal `50`, the `>`, then the lifted CONTROL.
+    """
+    instrs = _emit_source(
+        "graphC base @health SENSOR 50 > CONTROL-ENABLED", "graphC", "base"
+    )
+    controls = [i for i in instrs if i[1] == "control"]
+    assert len(controls) == 1
+    (_, _, ops) = controls[0]
+    assert ops[0] == "enabled"
+    assert ops[1] == "graphC"
+    assert ops[2].startswith("s")
+    assert ops[3:] == ("0", "0", "0")
+    # Sanity: there must be a `sensor` instruction in the stream
+    # (proving the value-computation was emitted, not elided).
+    sensors = [i for i in instrs if i[1] == "sensor"]
+    assert len(sensors) == 1, instrs
+
+
+def test_emit_control_enabled_block_at_id_with_slot_value() -> None:
+    """Negative: an @-identifier block followed by a value-computation
+    must lift the same way a uservar block does."""
+    instrs = _emit_source("@this 5 3 > CONTROL-ENABLED")
+    controls = [i for i in instrs if i[1] == "control"]
+    assert len(controls) == 1
+    (_, _, ops) = controls[0]
+    assert ops[1] == "@this"
+    assert ops[2].startswith("s")
+
+
+def test_emit_control_lifter_does_not_fire_for_shoot_or_color() -> None:
+    """The variable-length lifter is gated on CONTROL-ENABLED and
+    CONTROL-CONFIG only. CONTROL-SHOOT / SHOOTP / COLOR have larger
+    arity (4 / 3 / 4) and would never sit at depth==2 immediately
+    before consume — the lift must not fire, and the slot-form
+    fallback must handle them.
+    """
+    # SHOOT: 4 args. Use a uservar block to test that the lift does
+    # NOT fire (block would be at slot s0 in the emitted output).
+    # Source: graphC 50 60 1 CONTROL-SHOOT — the uservar push gets the
+    # cell-free guard's NotImplementedError because there's no lift
+    # for SHOOT and the bare-uservar push then has nothing fusing it.
+    with pytest.raises(NotImplementedError, match="cell-free"):
+        _emit_source("graphC 50 60 1 CONTROL-SHOOT", "graphC")
+
+
+def test_emit_control_lifter_skips_when_litint_at_block_position() -> None:
+    """A LitInt at the block position should NOT trigger the slot-value
+    lift — block must be a name (uservar / @-id / LitStr). The existing
+    3-term all-literal lift handles literal-block + literal-value, but
+    that wants `<name> <value> CONTROL-target`, not `<int> <name>
+    CONTROL-target`. With a LitInt block AND a value-computation, the
+    program falls through to slot-form fallback.
+    """
+    instrs = _emit_source("0 GETLINK 1 CONTROL-ENABLED")
+    controls = [i for i in instrs if i[1] == "control"]
+    assert len(controls) == 1
+    (_, _, ops) = controls[0]
+    assert ops[0] == "enabled"
+    # Slot-form fallback uses slots for both block and value.
+    assert ops[1].startswith("s")
+    assert ops[2].startswith("s") or ops[2] == "1"  # may be a slot or lifted literal
+
+
+def test_emit_control_lifter_handles_two_back_to_back() -> None:
+    """Two CONTROL-target lifts in sequence — the second must NOT get
+    swallowed into the first's value-computation scan.
+
+    Source: `graphC 1 CONTROL-ENABLED sorter1 @copper CONTROL-CONFIG`
+    The first triple matches the existing 3-term all-literal lifter,
+    consuming 3 terms; advance to body[3]. The second triple matches
+    the existing 3-term all-literal CONFIG lifter, consuming 3 more.
+    """
+    instrs = _emit_source(
+        "graphC 1 CONTROL-ENABLED sorter1 @copper CONTROL-CONFIG",
+        "graphC",
+        "sorter1",
+    )
+    controls = [i for i in instrs if i[1] == "control"]
+    assert controls == [
+        (None, "control", ("enabled", "graphC", "1", "0", "0", "0")),
+        (None, "control", ("config", "sorter1", "@copper", "0", "0", "0")),
+    ]
+
+
 def test_emit_control_shoot_emits_four_operands_no_padding() -> None:
     """CONTROL-SHOOT uses all four control operand slots — no padding zeros.
 

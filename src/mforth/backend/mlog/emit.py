@@ -1077,6 +1077,111 @@ class _Emitter:
         if consumed:
             return consumed
 
+        # CONTROL-ENABLED / CONTROL-CONFIG lifting with a stack-computed
+        # VALUE operand (bead mforth-vdt). The USR "All In" /
+        # "ConveyorBlock" / "Just Charge" pattern: a hysteresis or
+        # threshold comparison drives the flag, the block name stays a
+        # sidecar link. The natural mforth port (Forth stack order is
+        # `( block flag -- )`):
+        #
+        #   graphC base @itemCapacity SENSOR base @graphite SENSOR >
+        #          CONTROL-ENABLED
+        #
+        # ...where the bare-uservar push of `graphC` would normally
+        # trip v1's cell-free guard. This lift recognises the variable-
+        # length shape `<block-literal-source> <value-computation>
+        # <CONTROL-target>` and emits the value-computation normally
+        # (it writes to the slot the CONTROL primitive expects to read
+        # for the value) followed by a single
+        # `control <sub> <block> s<value-slot> 0 0 0` instruction with
+        # the block kept literal.
+        #
+        # The forward scan tracks simulated stack depth (block pushed at
+        # +1; each intervening term applies its (in_arity, out_arity))
+        # and stops at the first CONTROL-ENABLED / CONTROL-CONFIG
+        # encountered with depth == 2 immediately before that primitive
+        # consumes its operands. By stackcheck having already accepted
+        # the program, the intervening segment is guaranteed net (0, 1).
+        #
+        # Priority: this lifter runs AFTER the 3-term all-literal
+        # lifters above so the fully-literal patterns (e.g.
+        # `cv1 1 CONTROL-ENABLED`) still fire and emit a literal value
+        # rather than collapsing into a slot-reference.
+        def lift_control_block_slot_value() -> int:
+            """Try to lift `<block-literal> <value-comp> CONTROL-target`.
+
+            Returns `k+1` (consumed term count) if a lift fired, 0
+            otherwise.
+            """
+            # body[i] must be a block-literal-source.
+            block_op: Optional[str] = None
+            if (uvname := is_uservar(i)) is not None:
+                block_op = uvname
+            elif (atblock := is_at_identifier(i)) is not None:
+                block_op = atblock
+            elif isinstance(body[i], LitStr):
+                block_op = body[i].value
+            if block_op is None:
+                return 0
+            # Forward-scan, tracking simulated stack depth (block push
+            # = +1 at body[i+1] entry). Stop at the first CONTROL-
+            # ENABLED / CONTROL-CONFIG with depth == 2 immediately
+            # before its consume.
+            depth = 1
+            j = i + 1
+            while j < len(body):
+                term = body[j]
+                # Detect a matching CONTROL-target.
+                if is_primitive(j, "CONTROL-ENABLED") and depth == 2:
+                    sub_name = "enabled"
+                    matched = True
+                elif is_primitive(j, "CONTROL-CONFIG") and depth == 2:
+                    sub_name = "config"
+                    matched = True
+                else:
+                    matched = False
+                if matched:
+                    # Emit the intervening (value-computation) segment
+                    # normally, then the lifted control instruction.
+                    self._emit_body(out, body[i + 1 : j], slot_rewrite)
+                    control_term = body[j]
+                    rw = self._rw(control_term, slot_rewrite)
+                    if len(rw.reads) < 2:
+                        # Shouldn't happen for a well-stackchecked
+                        # CONTROL term; bail and let the slot-form
+                        # fallback handle it.
+                        return 0
+                    # reads[0] = block-slot (the slot the bare-uservar
+                    # push WOULD have written to — elided here).
+                    # reads[1] = value-slot (where the intervening
+                    # computation actually wrote the value).
+                    value_slot = rw.reads[1]
+                    self._emit(
+                        out,
+                        "control",
+                        (sub_name, block_op, value_slot, "0", "0", "0"),
+                    )
+                    return j - i + 1
+                # Update simulated depth using the term's stack effect.
+                # Bail out (return 0, let fallback handle) on any term
+                # whose effect we can't statically read — control flow,
+                # nested user-defs with recursion, etc. Those shapes
+                # don't appear in the USR target scripts.
+                eff = _term_static_effect(term, self.dictionary, self.result)
+                if eff is None:
+                    return 0
+                new_depth = depth - eff[0] + eff[1]
+                if new_depth < 0:
+                    # Underflow — would have failed stackcheck; bail.
+                    return 0
+                depth = new_depth
+                j += 1
+            return 0
+
+        consumed = lift_control_block_slot_value()
+        if consumed:
+            return consumed
+
         return 0
 
     def _emit_mindustry_slot_form(self, out: list, name: str, rw) -> None:
@@ -1382,6 +1487,41 @@ class _RW:
     def __init__(self, reads: tuple, writes: tuple) -> None:
         self.reads = reads
         self.writes = writes
+
+
+def _term_static_effect(
+    term, dictionary, result: StackcheckResult
+) -> Optional[tuple[int, int]]:
+    """Return a term's static `(in_arity, out_arity)` if statically known.
+
+    Used by the CONTROL slot-value lifter (bead mforth-vdt) to forward-
+    scan over the value-computation segment between the block-literal
+    source and the CONTROL primitive without re-running stackcheck.
+    Returns ``None`` for terms whose effect can't be cheaply read out
+    here (control flow, definitions whose effect isn't in `result`),
+    signalling the caller to bail out and let the slot-form fallback
+    handle the case.
+    """
+    if isinstance(term, (LitInt, LitStr)):
+        return (0, 1)
+    if isinstance(term, VarRef):
+        return (0, 1) if term.mode == "fetch" else (1, 0)
+    if isinstance(term, WordCall):
+        entry = dictionary.lookup(term.name)
+        if isinstance(entry, BuiltinWord):
+            eff = entry.stack_effect
+            return (eff.in_arity, eff.out_arity)
+        if isinstance(entry, UserVariable):
+            return (0, 1)
+        if isinstance(entry, Definition):
+            eff = result.effects.get(entry.name)
+            if eff is None:
+                return None
+            return (eff.in_arity, eff.out_arity)
+        return None
+    # IfThen / Begin / DoLoop — control flow inside a CONTROL value
+    # computation is unusual; if it appears, bail out of the lift.
+    return None
 
 
 __all__ = ["MlogInstr", "emit"]
