@@ -82,7 +82,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from mforth.backend.world import MockWorld
+from mforth.backend.world import NULL_VALUE, MockWorld
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +144,10 @@ def _format_for_print(value: Any) -> str:
     "5.0" in Python but the host never gets a float for whole numbers
     because ``2 + 3`` stays an int. The interpreter preserves the same
     by keeping integer literals + integer arithmetic as Python int.
+
+    bead mforth-l8z: :data:`NULL_VALUE` renders as ``"null"`` via its
+    own ``__str__`` — no special case needed at this layer (the
+    fallthrough ``str(value)`` produces the right token).
     """
     if isinstance(value, bool):
         return "1" if value else "0"
@@ -417,6 +421,15 @@ class MlogInterpreter:
         # Quoted string literal — never a variable lookup.
         if len(token) >= 2 and token[0] == '"' and token[-1] == '"':
             return token[1:-1]
+        # bead mforth-l8z: the bare `null` token is the mlog null
+        # sentinel. Resolve to the host's NULL_VALUE singleton so
+        # ControlEvent.args tuples match the host REPL exactly (REPL
+        # ↔ mlog equivalence). This special-case sits ABOVE the
+        # _parse_literal call because `_parse_literal("null")` falls
+        # through to "bare identifier" and would be looked up as a
+        # variable (defaulting to 0) without this branch.
+        if token == "null":
+            return NULL_VALUE
         value = _parse_literal(token)
         if isinstance(value, str):
             # variable name (bare identifier or @-prefixed builtin)

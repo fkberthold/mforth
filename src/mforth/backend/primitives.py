@@ -94,6 +94,8 @@ from __future__ import annotations
 import math
 from typing import TYPE_CHECKING, Callable
 
+from mforth.backend.world import NULL_VALUE
+
 if TYPE_CHECKING:
     from mforth.backend.host import Executor
 
@@ -458,6 +460,27 @@ def _control_color(ex: "Executor") -> None:
 
 
 # ---------------------------------------------------------------------------
+# NULL literal (bead mforth-l8z)
+# ---------------------------------------------------------------------------
+
+
+def _push_null(ex: "Executor") -> None:
+    """`NULL` — ( -- null ) push the mlog null sentinel.
+
+    Pushes the module-level :data:`mforth.backend.world.NULL_VALUE`
+    singleton onto the data stack. ``str(NULL_VALUE) == "null"`` so
+    PRINT/dot/CONTROL-CONFIG render it as the literal mlog token.
+
+    Companion mlog-interp special-case: bead-l8z extends
+    :meth:`MlogInterpreter._read` so the bare ``null`` operand token
+    resolves to the same :data:`NULL_VALUE` singleton. That keeps
+    ``ControlEvent.args`` tuples identical across the host REPL and
+    the compiled-mlog backend (REPL ↔ mlog equivalence contract).
+    """
+    ex.data_stack.append(NULL_VALUE)
+
+
+# ---------------------------------------------------------------------------
 # Public registry
 # ---------------------------------------------------------------------------
 
@@ -505,6 +528,8 @@ _PRIMITIVES: dict[str, PrimitiveFn] = {
     "CONTROL-SHOOT": _control_shoot,
     "CONTROL-SHOOTP": _control_shootp,
     "CONTROL-COLOR": _control_color,
+    # NULL literal (bead mforth-l8z)
+    "NULL": _push_null,
 }
 
 

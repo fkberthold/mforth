@@ -73,6 +73,38 @@ class VariableWriteEvent(Event):
     value: float
 
 
+class _NullValue:
+    """Sentinel for mlog's ``null`` (bead mforth-l8z).
+
+    The host primitive for the source-level ``NULL`` word pushes the
+    module-level singleton :data:`NULL_VALUE` onto the data stack. The
+    mlog interpreter's :meth:`MlogInterpreter._read` resolves the bare
+    ``null`` operand token to the same singleton so the REPL ↔ mlog
+    equivalence property holds: ``ControlEvent.args`` tuples on both
+    backends contain the same Python object.
+
+    ``str(NULL_VALUE)`` returns ``"null"`` — PRINT, the dot primitive,
+    and mlog ``_format_for_print`` all route through this naturally,
+    matching the in-game `print null` behavior. Boolean coercion is
+    false to match mlog's branching semantics (``jump notEqual <x>
+    null`` treats null like 0).
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover - cosmetic
+        return "NULL_VALUE"
+
+    def __str__(self) -> str:
+        return "null"
+
+    def __bool__(self) -> bool:
+        return False
+
+
+NULL_VALUE = _NullValue()
+
+
 @dataclass(frozen=True)
 class ControlEvent(Event):
     """Block-side `control` instruction (bead mforth-cto).
@@ -291,6 +323,7 @@ __all__ = [
     "MessagePrintEvent",
     "MessagePrintflushEvent",
     "MockWorld",
+    "NULL_VALUE",
     "SensorReadEvent",
     "VariableReadEvent",
     "VariableWriteEvent",
