@@ -76,6 +76,7 @@ nav:
       - Use with Helix: how-to/use-with-helix.md
       - Use with Neovim: how-to/use-with-nvim.md
       - Pin a sidecar link by index: how-to/pin-sidecar-link-by-index.md
+      - Verify REPL ↔ mlog equivalence: how-to/verify-repl-mlog-equivalence.md
   - Reference:
       - reference/index.md
       - CLI: reference/cli.md
