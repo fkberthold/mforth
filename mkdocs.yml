@@ -78,6 +78,7 @@ nav:
   - Reference:
       - reference/index.md
       - CLI: reference/cli.md
+      - Dictionary: reference/dictionary.md
   - Explanation:
       - explanation/index.md
       - Why mforth: explanation/why-mforth.md
