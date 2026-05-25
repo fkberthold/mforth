@@ -80,6 +80,7 @@ nav:
       - CLI: reference/cli.md
       - Dictionary: reference/dictionary.md
       - Sidecar schema: reference/sidecar-schema.md
+      - Events: reference/events.md
   - Explanation:
       - explanation/index.md
       - Why mforth: explanation/why-mforth.md
