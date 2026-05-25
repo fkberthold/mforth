@@ -214,6 +214,16 @@ _BUILTINS: list[BuiltinWord] = [
         "set illuminator color: ( block r g b -- )",
         "mindustry-control",
     ),
+    # NULL literal (bead mforth-l8z). Pushes the mlog null sentinel
+    # onto the data stack. Composes with CONTROL-CONFIG to stop a
+    # sorter/unloader (USR Sorter Picker pattern) and with PRINT to
+    # render the literal text "null".
+    BuiltinWord(
+        "NULL",
+        StackEffect(0, 1),
+        "push the mlog null sentinel: ( -- null )",
+        "mindustry",
+    ),
     # DO/LOOP counters. Valid only inside a DO/LOOP body, but the dictionary
     # treats them as plain (0, 1) pushes for resolution + stack arithmetic.
     BuiltinWord("I", StackEffect(0, 1), "push current DO/LOOP counter", "control"),

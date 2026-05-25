@@ -692,6 +692,21 @@ class _Emitter:
             self._emit(out, "set", (rw.writes[0], entry.name))
             return None
 
+        # NULL literal (bead mforth-l8z) — slot-form push of the bare
+        # `null` token. The lifting fast path in
+        # `_try_lift_mindustry_primitive` handles the
+        # `<block> NULL CONTROL-CONFIG/-ENABLED` case directly; this arm
+        # fires when NULL is consumed by something else (PRINT in the
+        # slot-form path, IF, etc.). The mlog interpreter's
+        # `_read("null")` returns the host's NULL_VALUE singleton so the
+        # downstream consumer sees the same Python object on both
+        # backends.
+        if isinstance(entry, BuiltinWord) and entry.name == "NULL":
+            self._guard_no_pending(pending_var, term)
+            rw = self._rw(term, slot_rewrite)
+            self._emit(out, "set", (rw.writes[0], "null"))
+            return None
+
         # User-definition call — inline the body with offset rewriting.
         if isinstance(entry, Definition):
             self._guard_no_pending(pending_var, term)
@@ -969,6 +984,16 @@ class _Emitter:
                 return entry.name
             return None
 
+        def is_null_word(k: int) -> bool:
+            """True iff body[k] is the bare NULL builtin (bead mforth-l8z)."""
+            if k >= len(body):
+                return False
+            t = body[k]
+            if not isinstance(t, WordCall):
+                return False
+            entry = self.dictionary.lookup(t.name)
+            return isinstance(entry, BuiltinWord) and entry.name == "NULL"
+
         # SENSOR: 3-term `<link-uservar> <@-prop> SENSOR`.
         if (
             i + 2 < len(body)
@@ -1079,6 +1104,12 @@ class _Emitter:
                 value_op = body[i + 1].value
             elif (atval := is_at_identifier(i + 1)) is not None:
                 value_op = atval
+            elif is_null_word(i + 1):
+                # bead mforth-l8z: NULL literal as the value operand.
+                # Emit bare `null` so mlog `control config <block> null
+                # 0 0 0` runs natively (Sorter Picker "stop unloading"
+                # pattern).
+                value_op = "null"
             if value_op is None:
                 return 0
             self._emit(

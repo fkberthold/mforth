@@ -1,0 +1,30 @@
+# Sorter Picker equivalence fixture (bead mforth-l8z).
+# Two generic vault sources, one generic unloader target, one message
+# display. The fixture exercises the NULL literal in the
+# both-vaults-empty branch and the @-identifier value source in the
+# dominant-resource branches.
+
+[links.vault1]
+type   = "generic"
+target = "vault1"
+
+# Pre-seed levels so the dominant-resource branch fires on iteration 1
+# and the both-empty branch fires on iteration 2 (after a manual
+# drain). The MockWorld harness does not currently auto-drain so the
+# fixture exercises the @copper arm only on default state; the NULL
+# arm is exercised by the unit test_null.py suite. We still ship the
+# fixture as the headline integration because the EQUIVALENCE
+# property is what we care about — both backends must agree on which
+# arm fires given the same world state.
+
+[links.unloader1]
+type   = "generic"
+target = "unloader1"
+
+[links.display]
+type   = "message"
+target = "message1"
+
+[clock]
+ipt      = 8
+realtime = false
