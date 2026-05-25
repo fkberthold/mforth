@@ -79,5 +79,5 @@ nav:
       - reference/index.md
   - Explanation:
       - explanation/index.md
-      - Mental model: explanation/mental-model.md
+      - Why mforth: explanation/why-mforth.md
       - Forth, the mental model: explanation/forth-mental-model.md

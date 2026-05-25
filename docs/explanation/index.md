@@ -16,5 +16,8 @@ have a thesis; they argue for it.
 
 ## Start here
 
-- [**Mental model**](mental-model.md) — the load-bearing idea behind
-  the project.
+- [**Why mforth**](why-mforth.md) — the project-level thesis:
+  REPL ↔ mlog equivalence as the load-bearing idea.
+- [**Forth, the mental model**](forth-mental-model.md) — the
+  Forth-language sub-thesis: composition over abstraction,
+  factoring as stack discipline.

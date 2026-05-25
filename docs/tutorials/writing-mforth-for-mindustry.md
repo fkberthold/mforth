@@ -821,7 +821,7 @@ have v2 follow-up beads:
   same, for Neovim.
 - **[Reference](../reference/index.md)** — every word, every
   sidecar field, every CLI flag.
-- **[Explanation: Mental model](../explanation/mental-model.md)**
+- **[Explanation: Why mforth](../explanation/why-mforth.md)**
   — why mforth chose the static-stack / cell-free / inline-everything
   shape it did.
 

@@ -89,5 +89,5 @@ message block to it, paste, and the block will read
   upgrading, or installing on a second machine.
 - [Reference](../reference/index.md) — the full surface (every
   Forth word, every sidecar field, every CLI flag).
-- [Explanation: Mental model](../explanation/mental-model.md) — why
+- [Explanation: Why mforth](../explanation/why-mforth.md) — why
   mforth is shaped the way it is.
