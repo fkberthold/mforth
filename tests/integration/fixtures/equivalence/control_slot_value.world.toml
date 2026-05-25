@@ -1,0 +1,23 @@
+# mforth-vdt equivalence fixture sidecar — CONTROL slot-value lifter.
+# Three links exercising the lifter's three block-source forms:
+#   * graphC  — a switch link (CONTROL-ENABLED target).
+#   * sorter1 — a generic block (CONTROL-CONFIG target).
+#   * display — a message block (Mode A substituted to message1 in
+#     compiled mlog, exercising the orthogonal sidecar pass).
+
+[links.graphC]
+type    = "switch"
+target  = "switch1"
+enabled = false
+
+[links.sorter1]
+type   = "generic"
+target = "sorter1"
+
+[links.display]
+type   = "message"
+target = "message1"
+
+[clock]
+ipt      = 8
+realtime = false
