@@ -1,0 +1,26 @@
+# Exercise spec — sim-102 track (bead mforth-roz.6, ch14 capstone, milestone 2).
+#
+# Capstone milestone 2: the three-arm decision. Drain the bigger pile,
+# UNLESS both piles are empty — then stop. Two readings on the stack
+# (surge level, blast level); print the verdict. The new trick is
+# `OVER OVER`: copy the pair so the "both empty?" test can consume one
+# copy while the bigger-of-two test still has the originals.
+id = "sim-102/04-pick-drain"
+prompt = "Define `pick-drain` ( surge blast -- ): if BOTH levels are zero print \"STOP\"; otherwise print \"SURGE\" when surge is the larger pile, else \"BLAST\"."
+hint = "`OVER OVER` duplicates the pair. `+ 0 =` asks \"is the total zero?\" (both empty). Outer IF takes the STOP arm — `DROP DROP` the leftover copies first. The ELSE arm keeps the pair; bare `>` picks the bigger for the inner IF."
+
+[[case]]
+driver = "0 0 pick-drain"
+expect = ["STOP"]
+
+[[case]]
+driver = "900 100 pick-drain"
+expect = ["SURGE"]
+
+[[case]]
+driver = "100 900 pick-drain"
+expect = ["BLAST"]
+
+[[case]]
+driver = "0 400 pick-drain"
+expect = ["BLAST"]

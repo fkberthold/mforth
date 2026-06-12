@@ -1,0 +1,32 @@
+# Exercise spec — sim-102 track (bead mforth-roz.6, ch14 capstone, milestone 3).
+#
+# Capstone milestone 3: the decision from milestone 2 now ACTS. Each
+# arm configures the `unloader` (CONTROL-CONFIG) AND prints the verdict
+# so the checker can see what happened. Configuring to NULL is mlog's
+# "select no resource" — that's how the STOP arm halts draining. The
+# `sidecar` wires the one block this word names.
+id = "sim-102/05-sorter-step"
+prompt = "Define `sorter-step` ( surge blast -- ): same three arms as `pick-drain`, but each arm also configures the `unloader` — `@surge-alloy` / `@blast-compound` to drain that pile, or `NULL` to stop — and still prints \"SURGE\" / \"BLAST\" / \"STOP\"."
+hint = "Take the `pick-drain` body and, in each arm, add a CONTROL-CONFIG before the PRINT: `unloader @surge-alloy CONTROL-CONFIG`, `unloader @blast-compound CONTROL-CONFIG`, and `unloader NULL CONTROL-CONFIG` in the STOP arm. NULL is the source literal for mlog's null."
+
+sidecar = """
+[links.unloader]
+type = "generic"
+target = "unloader1"
+"""
+
+[[case]]
+driver = "0 0 sorter-step"
+expect = ["STOP"]
+
+[[case]]
+driver = "900 100 sorter-step"
+expect = ["SURGE"]
+
+[[case]]
+driver = "100 900 sorter-step"
+expect = ["BLAST"]
+
+[[case]]
+driver = "0 250 sorter-step"
+expect = ["BLAST"]
