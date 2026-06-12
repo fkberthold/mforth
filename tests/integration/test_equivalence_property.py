@@ -45,7 +45,7 @@ import importlib.util
 from pathlib import Path
 
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, given, seed, settings
 
 from tests.integration._gen import SIDECAR_TOML, mforth_program
 
@@ -242,7 +242,11 @@ def test_generator_emits_full_primitive_subset() -> None:
     seen: set[str] = set()
     saw_dot = []
 
-    @settings(max_examples=300, deadline=None)
+    # Pinned seed + no example DB => the coverage sweep is DETERMINISTIC.
+    # Without this the random sweep intermittently missed a rare construct
+    # (e.g. '<') and false-failed this guard — a flaky merge/CI gate.
+    @seed(20260611)
+    @settings(max_examples=600, deadline=None, database=None)
     @given(source=mforth_program())
     def _collect(source: str) -> None:
         for line in source.splitlines():
