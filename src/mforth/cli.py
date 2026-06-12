@@ -211,6 +211,10 @@ def _load_subcommands() -> None:
     # Bead .19 — `compile` follows the same explicit-`register()` pattern.
     from mforth import cli_compile as _compile_cli  # noqa: F401  -- side-effect import (bead .19)
     _compile_cli.register()
+    # Bead roz.1 — `check` (tutorial exercise auto-checker) follows the same
+    # explicit-`register()` pattern.
+    from mforth import cli_check as _check_cli  # noqa: F401  -- side-effect import (bead roz.1)
+    _check_cli.register()
 
 
 # --------------------------------------------------------------------------

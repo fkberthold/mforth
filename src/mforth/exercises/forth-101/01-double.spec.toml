@@ -1,0 +1,28 @@
+# Exercise spec — bundled package data (bead mforth-roz.1).
+#
+# Loaded by mforth.exercises.load_spec via importlib.resources, so the
+# `mforth check` subcommand resolves it from any cwd. See
+# src/mforth/exercises/__init__.py for the schema dataclasses + loader.
+#
+# Schema:
+#   id      (str, required)  — "<track>/<name>", matches the dir + filename.
+#   prompt  (str, required)  — what the learner must implement.
+#   hint    (str, required)  — shown on failure.
+#   sidecar (str, optional)  — inline .world.toml text for sim exercises.
+#   [[case]] (>=1, required) — driver (Forth appended after learner code)
+#                              + expect (ordered list of printed strings).
+id = "forth-101/01-double"
+prompt = "Define `double` ( n -- n*2 ): leave twice the input on the stack."
+hint = "DUP makes a second copy, then + adds the two copies together. (Or: 2 * .)"
+
+[[case]]
+driver = "5 double ."
+expect = ["10"]
+
+[[case]]
+driver = "0 double ."
+expect = ["0"]
+
+[[case]]
+driver = "-3 double ."
+expect = ["-6"]
