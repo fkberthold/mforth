@@ -41,6 +41,12 @@ Negative cases (M5):
   pinned by ``test_register_subcommand_adds_to_registry``.
 * Version handler does not special-case the registry — pinned by
   ``test_version_subcommand_is_registered_via_register_subcommand``.
+
+Bead mforth-d1o adds a test class pinning that the ``lsp`` and ``repl``
+subcommands converge on the .14 explicit ``register()`` pattern (a
+module-level ``register()`` callable invoked by ``_load_subcommands``),
+which survives pytest's registry-clear-and-replay isolation — the
+brittle import-side-effect registration did not.
 """
 
 from __future__ import annotations
@@ -196,6 +202,97 @@ def test_version_handler_falls_back_when_metadata_missing(
     captured = capsys.readouterr()
     assert rc == 0
     assert captured.out.strip() == f"mforth {mforth.__version__}"
+
+
+# --------------------------------------------------------------------------
+# Subcommand registration converges on the explicit register() pattern
+# (bead mforth-d1o)
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("subcommand", ["lsp", "repl"])
+def test_subcommand_module_exposes_register_callable(subcommand):
+    """``lsp`` and ``repl`` follow the .14 explicit ``register()`` pattern.
+
+    Bead mforth-d1o. The canonical pattern (cli_run.py / cli_compile.py)
+    exposes a module-level ``register()`` callable that
+    ``_load_subcommands`` invokes after import — NOT a module-import
+    side-effect guarded by ``if name not in _REGISTRY``. The import
+    side-effect is brittle: once the module is cached in ``sys.modules``,
+    re-importing it (after a registry clear) is a no-op, so the guard
+    never re-runs and the subcommand silently vanishes from the registry.
+    """
+    import importlib
+
+    module = importlib.import_module(f"mforth.{subcommand}.cli_subcommand")
+    assert hasattr(module, "register"), (
+        f"{subcommand} subcommand module must expose a register() callable "
+        "(the .14 explicit-register() pattern mirrored from cli_run.py)"
+    )
+    assert callable(module.register)
+
+
+@pytest.mark.parametrize("subcommand", ["lsp", "repl"])
+def test_subcommand_register_survives_registry_clear_and_replay(subcommand):
+    """``lsp`` / ``repl`` re-register after a registry clear + replay.
+
+    Bead mforth-d1o. This is the exact test-isolation failure the bead
+    fixes: the subcommand modules are already cached in ``sys.modules``
+    (every prior test imported them via ``_load_subcommands``), then a
+    fixture clears the registry and re-runs ``_load_subcommands``. With
+    the brittle import-side-effect pattern the cached import is a no-op
+    and the subcommand never comes back. With the explicit ``register()``
+    call from ``_load_subcommands`` it does.
+    """
+    # Ensure the module is cached in sys.modules (the realistic state
+    # after any prior test exercised the CLI).
+    import importlib
+
+    importlib.import_module(f"mforth.{subcommand}.cli_subcommand")
+
+    saved = dict(cli._REGISTRY)
+    try:
+        cli._REGISTRY.clear()
+        cli._load_subcommands()
+        assert subcommand in cli._REGISTRY, (
+            f"{subcommand!r} missing from the registry after a clear + "
+            "_load_subcommands() replay — the brittle import-side-effect "
+            "registration pattern does not survive test isolation"
+        )
+        # And the subcommand is invocable: the parser builds with it.
+        parser = cli._build_parser()
+        with pytest.raises(SystemExit) as excinfo:
+            parser.parse_args([subcommand, "--help"])
+        assert excinfo.value.code == 0
+    finally:
+        cli._REGISTRY.clear()
+        cli._REGISTRY.update(saved)
+
+
+@pytest.mark.parametrize("subcommand", ["lsp", "repl"])
+def test_subcommand_register_is_idempotent(subcommand):
+    """Calling ``register()`` twice does not raise the duplicate ValueError.
+
+    Bead mforth-d1o. The .14 pattern guards ``register()`` with an
+    ``if name in _REGISTRY: return`` early-out so a second call (e.g. an
+    auto-register-on-import plus a ``_load_subcommands`` call) is a no-op
+    rather than a duplicate-name ``ValueError``.
+    """
+    import importlib
+
+    module = importlib.import_module(f"mforth.{subcommand}.cli_subcommand")
+
+    saved = dict(cli._REGISTRY)
+    try:
+        cli._REGISTRY.clear()
+        module.register()
+        assert subcommand in cli._REGISTRY
+        # Second call must be a silent no-op, not a ValueError.
+        module.register()
+        assert subcommand in cli._REGISTRY
+    finally:
+        cli._REGISTRY.clear()
+        cli._REGISTRY.update(saved)
 
 
 # --------------------------------------------------------------------------

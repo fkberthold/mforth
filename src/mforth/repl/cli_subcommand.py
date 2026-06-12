@@ -1,12 +1,19 @@
 """CLI subcommand registration for ``mforth repl`` (bead mforth-10t.13).
 
-Follows the registry pattern established by mforth-326 (drawer
-``drawer_mforth_decisions_85f5383552bbb0d611c8c989``):
+Converged to the .14 explicit-``register()`` pattern by bead mforth-d1o.
+Importing this module is safe but does NOT auto-register the subcommand
+— callers must invoke :func:`register` to populate the shared
+:mod:`mforth.cli` registry. This mirrors ``cli_run.py`` (.14) and
+``cli_compile.py`` (.19):
 
 * Each subcommand lives in its own module.
-* The module calls :func:`mforth.cli.register_subcommand` at import time.
-* ``mforth.cli._load_subcommands`` adds one import line per subcommand
-  module — no edits to ``main`` itself.
+* The module exposes a ``register()`` callable that
+  :func:`mforth.cli._load_subcommands` invokes after import. The
+  explicit call survives pytest's registry-clear-and-replay isolation
+  pattern — a module-import side-effect would not, because a cached
+  module re-import is a no-op and the registration would never re-run.
+* ``register()`` is idempotent: a second call after a registry clear
+  returns early instead of raising the duplicate-name ``ValueError``.
 
 The ``repl`` subcommand takes one optional argument:
 
@@ -58,10 +65,30 @@ def _handle_repl(args: argparse.Namespace) -> int:
     )
 
 
-if "repl" not in __import__("mforth.cli", fromlist=["_REGISTRY"])._REGISTRY:
+def register() -> None:
+    """Register the ``repl`` subcommand on the shared CLI registry.
+
+    Called from :func:`mforth.cli._load_subcommands`. Idempotent — a
+    second call after a registry clear (the test pattern from
+    ``test_cli.py`` / ``test_repl_prompt.py``) re-registers without
+    raising the duplicate-name ``ValueError``, so test isolation is
+    preserved without forcing every reset helper to know about every
+    subcommand module.
+    """
+    import mforth.cli as _cli_mod
+
+    if "repl" in _cli_mod._REGISTRY:
+        return
     register_subcommand(
         "repl",
         help="Drop to an interactive mforth REPL prompt.",
         configure_parser=_configure_repl_parser,
         handler=_handle_repl,
     )
+
+
+# Auto-register on import — so callers who `from mforth.repl import
+# cli_subcommand` without going through `_load_subcommands` still see the
+# side effect. Guarded against duplicate registration so re-imports are
+# safe.
+register()
