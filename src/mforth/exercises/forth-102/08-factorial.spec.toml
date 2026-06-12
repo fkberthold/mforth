@@ -1,0 +1,21 @@
+# Exercise spec — bundled package data (bead mforth-roz.1).
+# See forth-101/01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-102/08-factorial"
+prompt = "Define `factorial` ( n -- n! ): leave 1 * 2 * ... * n. By convention 0! = 1."
+hint = "Same shape as `sum`, but seed the accumulator with 1 (the identity for multiplication) and use `*` instead of `+`: `1 SWAP 1 + 1 DO I * LOOP`. For n = 0 the loop is zero-trip and the seed 1 falls through — which is exactly 0!."
+
+[[case]]
+driver = "5 factorial ."
+expect = ["120"]
+
+[[case]]
+driver = "1 factorial ."
+expect = ["1"]
+
+[[case]]
+driver = "0 factorial ."
+expect = ["1"]
+
+[[case]]
+driver = "6 factorial ."
+expect = ["720"]

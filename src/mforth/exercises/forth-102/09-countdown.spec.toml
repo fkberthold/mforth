@@ -1,0 +1,17 @@
+# Exercise spec — bundled package data (bead mforth-roz.1).
+# See forth-101/01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-102/09-countdown"
+prompt = "Define `countdown` ( n -- ): print n, then n-1, then ... down to 1, one value per line. Assume n >= 1. Leave nothing on the stack."
+hint = "`BEGIN ... UNTIL` runs the body, then pops a flag: 0 means loop again, nonzero means stop. Each pass: `DUP .` prints the current value (keeping a copy), `1 -` counts down, then `DUP 0 =` makes the stop flag. After UNTIL you still have the 0 on the stack — `DROP` it."
+
+[[case]]
+driver = "3 countdown"
+expect = ["3", "2", "1"]
+
+[[case]]
+driver = "1 countdown"
+expect = ["1"]
+
+[[case]]
+driver = "5 countdown"
+expect = ["5", "4", "3", "2", "1"]
