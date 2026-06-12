@@ -234,9 +234,10 @@ _BUILTINS: list[BuiltinWord] = [
 def standard_dictionary() -> Dictionary:
     """Build a fresh `Dictionary` populated with all v1 built-ins.
 
-    Also registers the 154-entry Mindustry @-identifier surface (bead
-    mforth-eaz): magic vars, content names (items/liquids/units/blocks),
-    sensor properties, and the `@tick`/`@ticks` alias. Source of truth
+    Also registers the 171-entry Mindustry @-identifier surface (bead
+    mforth-eaz; count reconciled in mforth-73h): 170 registry entries plus
+    the 1 `@tick`/`@ticks` alias. Covers magic vars, content names
+    (items/liquids/units/blocks), and sensor properties. Source of truth
     for the inventory + naming convention: MemPalace drawer
     `drawer_mforth_references_619a7ee4f1464f4bc65ef91a`.
     """
@@ -255,19 +256,25 @@ def standard_dictionary() -> Dictionary:
 
 
 # ---------------------------------------------------------------------------
-# Mindustry @-identifier surface (bead mforth-eaz)
+# Mindustry @-identifier surface (bead mforth-eaz; counts reconciled in
+# mforth-73h — the figures below are the live registry sizes, asserted by
+# tests/unit/test_dictionary_counts.py; a category that grows forces a
+# matching edit here)
 #
-# 154 entries compiled from Anuken/Mindustry source + sbxte/MLogWiki.
+# 171 entries compiled from Anuken/Mindustry source + sbxte/MLogWiki:
+# 170 registry entries (the six builders below) + 1 alias (@ticks→@tick).
 # See MemPalace drawer `drawer_mforth_references_619a7ee4f1464f4bc65ef91a`
 # for the authoritative inventory + per-name doc strings + the
 # camelCase→kebab-case naming convention. Categories:
 #
-#   §1 (a–h)  Magic @-variables          — 26 entries, tag "mindustry-magic"
+#   §1 (a–h)  Magic @-variables          — 29 entries, tag "mindustry-magic"
 #   §2a       Items                      — 22 entries, tag "mindustry-item"
 #   §2b       Liquids                    — 11 entries, tag "mindustry-liquid"
 #   §2c       Units (essential subset)   — 22 entries, tag "mindustry-unit"
 #   §2d       Blocks (essential subset)  — 15 entries, tag "mindustry-block"
-#   §3a–§3g   Sensor properties          — ~58 entries, tag "mindustry-sensor-prop"
+#   §3a–§3g   Sensor properties          — 71 entries, tag "mindustry-sensor-prop"
+#
+#   registry subtotal = 29+22+11+22+15+71 = 170; + 1 alias = 171 total.
 #
 # Each entry has stack effect (0, 1) — they all push a single value/tag.
 # Magic vars push a numeric stub or handle (host primitive returns
