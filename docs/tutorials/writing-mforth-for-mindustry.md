@@ -497,7 +497,10 @@ wins on both fronts.
 The job: an unloader on `unloader1` pulls items out of `vault1`.
 We pick what to drain based on which item vault1 holds more of —
 balance the pile by reducing whichever side is larger. Items
-considered: `@surge-alloy` and `@blast-compound`.
+considered: `@surge-alloy` and `@blast-compound`. There's a third
+arm: when *both* piles are empty there is nothing to drain, so we
+stop the unloader by configuring it to `null` (the mlog idiom for
+"no resource selected").
 
 **The original mlog (from the wiki):**
 
@@ -529,21 +532,29 @@ end
 ```
 
 24 instructions, eight named scratch variables, four nested
-branches. The thing it actually does is binary: pick the bigger
-item; null out when supplies are exhausted upstream.
+branches. Underneath the scratch-variable thicket the logic is
+three-armed: pick the bigger item, or — when both piles are empty
+— null out the unloader so it stops. mforth ports all three arms.
 
 **The mforth equivalent (`part4.fs`):**
 
 ```forth
-\ Part 4 — Sorter Picker port.
-\ Drain whichever item vault1 holds more of, to keep them balanced.
+\ Part 4 — Sorter Picker port (full three-arm version).
+\ Drain whichever item vault1 holds more of; if BOTH are gone,
+\ stop the unloader by configuring it to null.
 vault1 @surge-alloy SENSOR       \ ( -- hasSurge )
 vault1 @blast-compound SENSOR    \ ( hasSurge -- hasSurge hasBlast )
-
-> IF
-  unloader1 @blast-compound CONTROL-CONFIG
+OVER OVER                        \ ( hasSurge hasBlast -- hasSurge hasBlast hasSurge hasBlast )
++ 0 = IF
+  \ Both piles empty — stop unloading.
+  DROP DROP
+  unloader1 NULL CONTROL-CONFIG
 ELSE
-  unloader1 @surge-alloy CONTROL-CONFIG
+  > IF
+    unloader1 @blast-compound CONTROL-CONFIG
+  ELSE
+    unloader1 @surge-alloy CONTROL-CONFIG
+  THEN
 THEN
 ```
 
@@ -554,10 +565,6 @@ THEN
 type   = "generic"
 target = "vault1"
 
-[links.vault2]
-type   = "generic"
-target = "vault2"
-
 [links.unloader1]
 type   = "generic"
 target = "unloader1"
@@ -567,9 +574,17 @@ ipt      = 8
 realtime = false
 ```
 
-The two readings push their values onto the stack in order; the
-bare `>` consumes both and leaves the comparison result. `IF`
-picks the branch.
+The two readings push their values onto the stack in order.
+`OVER OVER` duplicates the pair so the outer test can consume one
+copy while the inner test still has the originals. `+ 0 =` sums
+the two levels and asks "is the total zero?" — i.e. are both piles
+empty. The outer `IF` takes the stop arm: it `DROP DROP`s the
+leftover copies and pushes `NULL` as the unloader's config. The
+`ELSE` keeps the original pair and the bare `>` consumes them,
+leaving a comparison result for the inner `IF` to pick the bigger
+item. `NULL` is the source-level literal for mlog's `null`; it
+landed in the dialect via bead `mforth-l8z`, which is what makes
+this full three-arm port possible.
 
 **Compile it:**
 
@@ -578,29 +593,41 @@ mforth compile part4.fs -o part4.mlog
 cat part4.mlog
 ```
 
-Seven instructions:
+15 instructions:
 
 ```
 sensor s0 vault1 @surge-alloy
 sensor s1 vault1 @blast-compound
+set s2 s0
+set s3 s1
+op add s2 s2 s3
+set s3 0
+op equal s2 s2 s3
+jump 10 equal s2 0
+control config unloader1 null 0 0 0
+jump 15 always 0 0
 op greaterThan s0 s0 s1
-jump 6 equal s0 0
+jump 14 equal s0 0
 control config unloader1 @blast-compound 0 0 0
-jump 7 always 0 0
+jump 15 always 0 0
 control config unloader1 @surge-alloy 0 0 0
 ```
 
 | Metric | Wiki mlog | mforth source | mforth compiled |
 |-------|----------|--------------|-----------------|
-| Lines (non-blank, non-comment) | 24 | 7 | 7 |
+| Lines (non-blank, non-comment) | 24 | 13 | 15 |
 | Named scratch variables | 8 | 0 | 0 |
-| Branches | 4 jumps | 1 `IF/ELSE` | 2 jumps |
+| Branches | 4 jumps | 2 `IF/ELSE` | 4 jumps |
 
-A note on faithfulness. mforth's port is *narrower* than the wiki
-original: USR's script also nulls out the unloader entirely when
-both `vault2` supplies are exhausted (the `set unload null` arm).
-v1 mforth has no `null` literal yet, so that branch is recorded
-as future work — see Part 6.
+A note on faithfulness. This is now a *full* port: all three arms
+of USR's script — drain the bigger pile, or null out the unloader
+when both supplies are exhausted (the `set unload null` arm) — are
+present. The null arm became expressible when the `NULL` literal
+landed in the dialect (bead `mforth-l8z`). You can see this exact
+program, with a status line added, run as an equivalence fixture at
+`tests/integration/fixtures/equivalence/sorter_picker_null.fs`; the
+suite asserts the host REPL and the compiled mlog produce the same
+event sequence against the same world.
 
 What you gained moving from raw mlog to mforth, even on this short
 script:
