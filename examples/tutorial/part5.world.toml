@@ -1,0 +1,32 @@
+[links.foundation1]
+type   = "generic"
+target = "foundation1"
+
+[links.conveyor1]
+type   = "switch"
+target = "switch1"
+enabled = false
+
+[links.conveyor2]
+type   = "switch"
+target = "switch2"
+enabled = false
+
+[links.conveyor3]
+type   = "switch"
+target = "switch3"
+enabled = false
+
+[links.conveyor4]
+type   = "switch"
+target = "switch4"
+enabled = false
+
+[links.conveyor5]
+type   = "switch"
+target = "switch5"
+enabled = false
+
+[clock]
+ipt      = 8
+realtime = false

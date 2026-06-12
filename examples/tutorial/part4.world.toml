@@ -1,0 +1,15 @@
+[links.vault1]
+type   = "generic"
+target = "vault1"
+
+[links.vault2]
+type   = "generic"
+target = "vault2"
+
+[links.unloader1]
+type   = "generic"
+target = "unloader1"
+
+[clock]
+ipt      = 8
+realtime = false
