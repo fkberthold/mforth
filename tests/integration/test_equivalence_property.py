@@ -224,23 +224,22 @@ _REQUIRED_CONSTRUCTS = [
     "BEGIN", "UNTIL",                          # converging loop
     "DO", "LOOP", "I",                        # counted loop
     "VARIABLE", "@", "!",                     # variables
-    "PRINT", 'S"',                             # IO sinks
+    "PRINT", ".", 'S"',                        # IO sinks (`.` landed by va2)
 ]
 
 
 def test_generator_emits_full_primitive_subset() -> None:
     """Coverage guard: across a Hypothesis sweep the generator must exercise
     every primitive/construct in the mforth-2p8 spec subset at least once,
-    and must NEVER emit the excluded ``.`` pop-print word (sibling bead va2).
+    INCLUDING the ``.`` pop-print word (its mlog emit landed in bead va2).
 
     Without this, a future edit could silently narrow the generator (e.g.
-    stop emitting BEGIN/UNTIL) and the property would still pass while
-    covering less. We accumulate the token set seen across a ``@given``
-    sweep (the Hypothesis-idiomatic way — no ``.example()``), then assert
-    coverage once the sweep completes.
+    stop emitting BEGIN/UNTIL, or drop ``.``) and the property would still
+    pass while covering less. We accumulate the token set seen across a
+    ``@given`` sweep (the Hypothesis-idiomatic way — no ``.example()``),
+    then assert coverage once the sweep completes.
     """
     seen: set[str] = set()
-    saw_dot = []
 
     # Pinned seed + no example DB => the coverage sweep is DETERMINISTIC.
     # Without this the random sweep intermittently missed a rare construct
@@ -252,8 +251,6 @@ def test_generator_emits_full_primitive_subset() -> None:
         for line in source.splitlines():
             for tok in line.split():
                 seen.add(tok)
-                if tok == ".":
-                    saw_dot.append(line)
 
     _collect()
 
@@ -261,9 +258,4 @@ def test_generator_emits_full_primitive_subset() -> None:
     assert not missing, (
         f"generator never emitted these required constructs across the "
         f"sweep: {missing}"
-    )
-    # The excluded pop-print word must NEVER appear (mforth-va2's territory).
-    assert not saw_dot, (
-        "generator emitted the excluded `.` pop-print word (mforth-va2's "
-        f"territory): {saw_dot[:3]}"
     )
