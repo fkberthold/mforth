@@ -87,10 +87,19 @@ instance.  The `<N>` suffix is the same counter used for the
 set __do_idx_N s<index_slot>
 set __do_limit_N s<limit_slot>
 L_do_N_top:
+jump L_do_N_end greaterThanEq __do_idx_N __do_limit_N
 <body>
 op add __do_idx_N __do_idx_N 1
-jump L_do_N_top lessThan __do_idx_N __do_limit_N
+jump L_do_N_top always 0 0
+L_do_N_end:
 ```
+
+The bounds test is at the TOP of the loop (a zero-trip guard), matching
+the host REPL's ``while: if idx >= limit: break``. A ``limit start DO``
+with ``start >= limit`` runs the body ZERO times. The earlier
+bottom-test (do-while) shape ran the body once regardless, diverging
+from the REPL on every zero-trip loop — fixed under bead mforth-2p8
+(generative equivalence harness found ``0 0 DO ... LOOP``).
 
 The loop counter words `I` and `J` are no longer deferred; they
 resolve to the innermost / next-out DO's `__do_idx_<N>` slot
@@ -340,8 +349,10 @@ def test_do_loop_no_body_iteration_skeleton():
         (None, "set", ("s1", "0")),
         (None, "set", ("__do_idx_0", "s1")),
         (None, "set", ("__do_limit_0", "s0")),
-        ("L_do_0_top", "op", ("add", "__do_idx_0", "__do_idx_0", "1")),
-        (None, "jump", ("L_do_0_top", "lessThan", "__do_idx_0", "__do_limit_0")),
+        ("L_do_0_top", "jump", ("L_do_0_end", "greaterThanEq", "__do_idx_0", "__do_limit_0")),
+        (None, "op", ("add", "__do_idx_0", "__do_idx_0", "1")),
+        (None, "jump", ("L_do_0_top", "always", "0", "0")),
+        ("L_do_0_end", None, None),
     ]
 
 
@@ -355,9 +366,11 @@ def test_do_loop_i_reads_loop_counter():
         (None, "set", ("s1", "0")),
         (None, "set", ("__do_idx_0", "s1")),
         (None, "set", ("__do_limit_0", "s0")),
-        ("L_do_0_top", "set", ("s0", "__do_idx_0")),
+        ("L_do_0_top", "jump", ("L_do_0_end", "greaterThanEq", "__do_idx_0", "__do_limit_0")),
+        (None, "set", ("s0", "__do_idx_0")),
         (None, "op", ("add", "__do_idx_0", "__do_idx_0", "1")),
-        (None, "jump", ("L_do_0_top", "lessThan", "__do_idx_0", "__do_limit_0")),
+        (None, "jump", ("L_do_0_top", "always", "0", "0")),
+        ("L_do_0_end", None, None),
     ]
 
 
@@ -387,17 +400,20 @@ def test_nested_do_loop_uses_distinct_counter_slots():
         (None, "set", ("s1", "0")),
         (None, "set", ("__do_idx_0", "s1")),
         (None, "set", ("__do_limit_0", "s0")),
-        ("L_do_0_top", "set", ("s0", "3")),
+        ("L_do_0_top", "jump", ("L_do_0_end", "greaterThanEq", "__do_idx_0", "__do_limit_0")),
+        (None, "set", ("s0", "3")),
         (None, "set", ("s1", "0")),
         (None, "set", ("__do_idx_1", "s1")),
         (None, "set", ("__do_limit_1", "s0")),
-        ("L_do_1_top", "set", ("s0", "__do_idx_1")),
+        ("L_do_1_top", "jump", ("L_do_1_end", "greaterThanEq", "__do_idx_1", "__do_limit_1")),
+        (None, "set", ("s0", "__do_idx_1")),
         (None, "set", ("s1", "__do_idx_0")),
         (None, "op", ("add", "s0", "s0", "s1")),
         (None, "op", ("add", "__do_idx_1", "__do_idx_1", "1")),
-        (None, "jump", ("L_do_1_top", "lessThan", "__do_idx_1", "__do_limit_1")),
-        (None, "op", ("add", "__do_idx_0", "__do_idx_0", "1")),
-        (None, "jump", ("L_do_0_top", "lessThan", "__do_idx_0", "__do_limit_0")),
+        (None, "jump", ("L_do_1_top", "always", "0", "0")),
+        ("L_do_1_end", "op", ("add", "__do_idx_0", "__do_idx_0", "1")),
+        (None, "jump", ("L_do_0_top", "always", "0", "0")),
+        ("L_do_0_end", None, None),
     ]
 
 

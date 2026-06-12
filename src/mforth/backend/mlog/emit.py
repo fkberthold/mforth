@@ -1476,11 +1476,24 @@ class _Emitter:
         Prologue:
             set __do_idx_N s<index_slot>
             set __do_limit_N s<limit_slot>
-        Top label, body, then increment + back-jump:
+        Top-of-loop bounds TEST (zero-trip correct — matches the host
+        ``while: if idx >= limit: break`` in ``backend/host.py``), body,
+        then increment + unconditional back-jump:
             L_do_N_top:
+              jump L_do_N_end greaterThanEq __do_idx_N __do_limit_N
               <body>
               op add __do_idx_N __do_idx_N 1
-              jump L_do_N_top lessThan __do_idx_N __do_limit_N
+              jump L_do_N_top always
+            L_do_N_end:
+
+        The test is at the TOP, not the bottom: a ``limit start DO`` with
+        ``start >= limit`` must run the body ZERO times (ANS Forth /
+        host-REPL semantics). The earlier bottom-test lowering
+        (``<body>`` then ``jump ... lessThan``) always executed the body
+        at least once, diverging from the host REPL on every zero-trip
+        loop (e.g. ``0 0 DO ... LOOP``) — the highest-severity regression
+        class for mforth. The generative equivalence harness
+        (mforth-2p8) shrank that bug to ``0 0 DO 0 PRINT I PRINT LOOP``.
         """
         n = self._do_counter
         self._do_counter += 1
@@ -1489,17 +1502,21 @@ class _Emitter:
         idx_var = f"__do_idx_{n}"
         limit_var = f"__do_limit_{n}"
         top_label = f"L_do_{n}_top"
+        end_label = f"L_do_{n}_end"
 
         self._emit(out, "set", (idx_var, index_slot))
         self._emit(out, "set", (limit_var, limit_slot))
         self._queue_label(top_label)
+        # Zero-trip guard: skip the body entirely when idx >= limit.
+        self._emit(out, "jump", (end_label, "greaterThanEq", idx_var, limit_var))
         self._loop_stack.append(n)
         try:
             self._emit_body(out, term.body, slot_rewrite)
         finally:
             self._loop_stack.pop()
         self._emit(out, "op", ("add", idx_var, idx_var, "1"))
-        self._emit(out, "jump", (top_label, "lessThan", idx_var, limit_var))
+        self._emit(out, "jump", (top_label, "always", "0", "0"))
+        self._queue_label(end_label)
 
     # ---- helpers --------------------------------------------------------
 
