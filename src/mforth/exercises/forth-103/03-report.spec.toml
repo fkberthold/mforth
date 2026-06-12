@@ -1,0 +1,21 @@
+# Exercise spec — bundled package data (bead mforth-roz.4, ch8 output).
+# See ../forth-101/01-double.spec.toml for the full schema.
+#
+# Note on `expect`: each `.` and each `PRINT` produces ONE printed event.
+# A label-then-value message is therefore TWO events, in order — exactly
+# how mlog's print buffer fills (two `print`s) before one `printflush`.
+id = "forth-103/03-report"
+prompt = "Define `report` ( n -- ): print the label `score=` and then print the number `n`. The label is a string, the number is a value — two prints, in that order. `report` consumes `n` and leaves nothing."
+hint = "`S\" score=\" PRINT` prints the label. Then a bare `PRINT` prints whatever is left on the stack — your `n`. Body: S\" score=\" PRINT PRINT"
+
+[[case]]
+driver = "42 report"
+expect = ["score=", "42"]
+
+[[case]]
+driver = "0 report"
+expect = ["score=", "0"]
+
+[[case]]
+driver = "-7 report"
+expect = ["score=", "-7"]

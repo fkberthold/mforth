@@ -1,0 +1,17 @@
+# Exercise spec — bundled package data (bead mforth-roz.4, ch7 state).
+# See ../forth-101/01-double.spec.toml for the full schema.
+id = "forth-103/02-total"
+prompt = "Keep a running total. A variable `total` starts at 0. Define `add` ( n -- ): add `n` into the running total stored in `total`. Each call folds one more number in; `add` leaves nothing on the stack."
+hint = "Take the new number `n` (it is on the stack), add it to the stored total — `total @ +` — then store the sum back with `total !`. Body: total @ + total !"
+
+[[case]]
+driver = "5 add  3 add  total @ ."
+expect = ["8"]
+
+[[case]]
+driver = "10 add  -4 add  total @ ."
+expect = ["6"]
+
+[[case]]
+driver = "total @ ."
+expect = ["0"]

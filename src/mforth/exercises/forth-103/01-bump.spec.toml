@@ -1,0 +1,18 @@
+# Exercise spec — bundled package data (bead mforth-roz.4, ch7 state).
+# See ../forth-101/01-double.spec.toml / src/mforth/exercises/__init__.py
+# for the full schema.
+id = "forth-103/01-bump"
+prompt = "A variable `count` already holds a number. Define `bump` ( -- ): add 1 to whatever `count` holds, storing the result back. It takes nothing and leaves nothing on the stack."
+hint = "Fetch the current value with `count @`, add 1, then store it back with `count !`. The whole body is: count @ 1 + count !"
+
+[[case]]
+driver = "bump count @ ."
+expect = ["1"]
+
+[[case]]
+driver = "bump bump bump count @ ."
+expect = ["3"]
+
+[[case]]
+driver = "5 count !  bump count @ ."
+expect = ["6"]
