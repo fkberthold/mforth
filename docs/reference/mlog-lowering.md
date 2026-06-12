@@ -25,9 +25,9 @@ pass, see `sidecar-schema.md`.
   for the `N`-th `DO/LOOP` in the program (counted globally, not per
   scope). Nesting cannot collide.
 - `L_if_<N>_end` / `L_if_<N>_else` / `L_begin_<N>_top` /
-  `L_begin_<N>_after` / `L_do_<N>_top` are symbolic labels emitted by
-  the control-flow arms; the finalize pass resolves them to 0-indexed
-  line numbers.
+  `L_begin_<N>_after` / `L_do_<N>_top` / `L_do_<N>_end` are symbolic
+  labels emitted by the control-flow arms; the finalize pass resolves
+  them to 0-indexed line numbers.
 - "(2, 1)" is shorthand for stack effect `( a b -- c )` — two inputs,
   one output.
 
@@ -139,7 +139,7 @@ ANS Forth convention: `( limit index -- )`, index on top.
 
 | Forth | mlog | Notes |
 |-------|------|-------|
-| `DO <body> LOOP` | `set __do_idx_<N> s<index>` <br> `set __do_limit_<N> s<limit>` <br> `L_do_<N>_top:` <br> `<body>` <br> `op add __do_idx_<N> __do_idx_<N> 1` <br> `jump L_do_<N>_top lessThan __do_idx_<N> __do_limit_<N>` | Per-N counters mean nested DO/LOOPs never collide. |
+| `DO <body> LOOP` | `set __do_idx_<N> s<index>` <br> `set __do_limit_<N> s<limit>` <br> `L_do_<N>_top:` <br> `jump L_do_<N>_end greaterThanEq __do_idx_<N> __do_limit_<N>` <br> `<body>` <br> `op add __do_idx_<N> __do_idx_<N> 1` <br> `jump L_do_<N>_top always 0 0` <br> `L_do_<N>_end:` | Per-N counters mean nested DO/LOOPs never collide. The bounds test is at the **TOP** (zero-trip guard): `limit start DO` with `start >= limit` runs the body zero times, matching the host REPL's `while idx < limit` — the headline equivalence property. Bead mforth-2p8 (generative harness caught the earlier bottom-test lowering, which always ran the body once). |
 | `I` (inside DO/LOOP) | `set s<i> __do_idx_<N>` | (0, 1). `N` is the innermost active loop. |
 | `J` (inside doubly-nested DO/LOOP) | `set s<i> __do_idx_<N>` | (0, 1). `N` is the *outer* of the two innermost loops. Using `J` with less than two enclosing loops is an emit-time error. |
 
