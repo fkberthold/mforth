@@ -44,3 +44,4 @@ tree-sitter-mforth/node_modules/
 tree-sitter-mforth/build/
 /site/
 .tutorial-snippets/
+.hypothesis/
