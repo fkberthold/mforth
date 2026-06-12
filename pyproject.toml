@@ -100,7 +100,10 @@ testpaths = [
     "tests/golden",
     "tests/e2e",
 ]
-pythonpath = ["src"]
+# "." (repo root) is on the path so `from tests.integration._gen import ...`
+# resolves under BARE `pytest` (CI), not just `python -m pytest` (which adds
+# cwd). tests/ has no __init__; the repo root makes `tests` a namespace pkg.
+pythonpath = ["src", "."]
 # Coverage flags live on the dedicated `pytest --cov` invocation (used in CI
 # and documented in CLAUDE.md), not in addopts. Rationale: a bare `pytest -q`
 # stays fast for the inner-loop TDD cycle; coverage runs are explicit.
