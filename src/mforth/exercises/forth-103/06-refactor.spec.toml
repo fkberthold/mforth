@@ -1,0 +1,19 @@
+# Exercise spec — bundled package data (bead mforth-roz.4, ch9 factoring).
+# See ../forth-101/01-double.spec.toml for the full schema.
+# Refactor a verbose word into clean factors. The checker only compares
+# OUTPUT, so any correct factoring passes — the prompt directs the shape.
+id = "forth-103/06-refactor"
+prompt = "Refactor for clarity. Define `announce` ( n -- ): print the label `doubled=`, then print `n` doubled. Pull the doubling out into its own well-named word `double` ( n -- n*2 ) and have `announce` call it — so `announce` reads as a sentence, not a pile of stack ops."
+hint = "First the factor: `: double ( n -- n*2 ) DUP + ;`. Then `announce` composes named pieces: `S\" doubled=\" PRINT double PRINT`."
+
+[[case]]
+driver = "5 announce"
+expect = ["doubled=", "10"]
+
+[[case]]
+driver = "0 announce"
+expect = ["doubled=", "0"]
+
+[[case]]
+driver = "-3 announce"
+expect = ["doubled=", "-6"]

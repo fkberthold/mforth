@@ -1,0 +1,18 @@
+# Exercise spec — bundled package data (bead mforth-roz.4, ch9 factoring).
+# See ../forth-101/01-double.spec.toml for the full schema.
+# Build a small vocabulary where the bigger word REUSES the smaller one.
+id = "forth-103/05-vocabulary"
+prompt = "Build a tiny vocabulary. Define `squared` ( n -- n*n ): the number times itself. Then define `cubed` ( n -- n*n*n ) by REUSING `squared` — cube is square times the number once more. `cubed` must call `squared`, not repeat its body."
+hint = "`squared` is `DUP *`. For `cubed`, keep a copy of n with DUP, square that copy, then multiply by the original: `DUP squared *`."
+
+[[case]]
+driver = "4 squared ."
+expect = ["16"]
+
+[[case]]
+driver = "2 cubed ."
+expect = ["8"]
+
+[[case]]
+driver = "5 squared .  3 cubed ."
+expect = ["25", "27"]

@@ -1,0 +1,18 @@
+# Exercise spec — bundled package data (bead mforth-roz.4, ch8 output).
+# See ../forth-101/01-double.spec.toml for the full schema.
+# Combines ch7 state (a variable) with ch8 output (a labelled message).
+id = "forth-103/04-show-count"
+prompt = "A variable `count` holds a number. Define `show-count` ( -- ): print the label `count=` and then print the value stored in `count`. Two prints, label first. `show-count` takes nothing and leaves nothing."
+hint = "Print the label with `S\" count=\" PRINT`, then fetch and print the variable with `count @ PRINT`. Body: S\" count=\" PRINT count @ PRINT"
+
+[[case]]
+driver = "show-count"
+expect = ["count=", "0"]
+
+[[case]]
+driver = "3 count !  show-count"
+expect = ["count=", "3"]
+
+[[case]]
+driver = "3 count !  show-count  9 count !  show-count"
+expect = ["count=", "3", "count=", "9"]
