@@ -455,19 +455,23 @@ def test_wait_in_loop_body_works():
     #   0 → set s1 0 (index)
     #   DO → set __do_idx_0 s1; set __do_limit_0 s0
     #   L_do_0_top:
+    #     jump L_do_0_end greaterThanEq __do_idx_0 __do_limit_0  (zero-trip guard)
     #     1 → set s0 1  (after DO, depth went 2→0, then 0→1 for the literal)
     #     WAIT → wait s0
     #   op add __do_idx_0 __do_idx_0 1
-    #   jump L_do_0_top lessThan __do_idx_0 __do_limit_0
+    #   jump L_do_0_top always 0 0
+    #   L_do_0_end:
     assert instrs == [
         (None, "set", ("s0", "3")),
         (None, "set", ("s1", "0")),
         (None, "set", ("__do_idx_0", "s1")),
         (None, "set", ("__do_limit_0", "s0")),
-        ("L_do_0_top", "set", ("s0", "1")),
+        ("L_do_0_top", "jump", ("L_do_0_end", "greaterThanEq", "__do_idx_0", "__do_limit_0")),
+        (None, "set", ("s0", "1")),
         (None, "wait", ("s0",)),
         (None, "op", ("add", "__do_idx_0", "__do_idx_0", "1")),
-        (None, "jump", ("L_do_0_top", "lessThan", "__do_idx_0", "__do_limit_0")),
+        (None, "jump", ("L_do_0_top", "always", "0", "0")),
+        ("L_do_0_end", None, None),
     ]
 
 
