@@ -1,18 +1,18 @@
-\ blink.fs — v1 demo half, xfail until mforth-10t.18 + .19 ship.
+\ blink.fs — the canonical v1 blink demo named in `mforth-v1-demo`.
 \
-\ Toggles a switch on/off forever, with a half-second WAIT pacing it.
-\ This is the canonical blink demo named in `mforth-v1-demo`.
+\ Toggles a flag on/off forever, with a half-second WAIT pacing it.
+\ The toggle uses `0=` ( n -- flag ): when `on` is 0 it stores 1, and
+\ when `on` is non-zero it stores 0 — a one-bit oscillator.
 \
-\ Once .18 (Mindustry primitive emit) and .19 (label resolution +
-\ sidecar substitution + getlink prologue) ship, drop the
-\ `blink` entry from XFAIL_FIXTURES in test_golden.py and run
-\ `pytest tests/golden --update-golden` to populate the expected mlog.
+\ Golden is real (no longer xfail) as of bead mforth-0fd, which landed
+\ the `0=` word. Regenerate with `pytest tests/golden --update-golden`
+\ after any intentional codegen change.
 
 VARIABLE on
 
 : tick
   on @ 0= IF 1 on ! ELSE 0 on ! THEN
-  switch1 SENSOR
+  switch1 @config SENSOR
   drop                   \ placeholder until SENSOR-write wiring lands
   0.5 WAIT
 ;

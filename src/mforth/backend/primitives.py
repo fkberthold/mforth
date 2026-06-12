@@ -197,6 +197,15 @@ def _ge(ex: "Executor") -> None:
     ex.data_stack.append(1 if a >= b else 0)
 
 
+def _zero_eq(ex: "Executor") -> None:
+    """`0=` — ( n -- flag ) push 1 if n == 0 else 0. Unary zero-test;
+    the mlog backend lowers it to `op equal s<out> s<in> 0` (compare
+    against the literal 0), so this mirrors `_eq` against a constant 0
+    and keeps the mlog 0/1 encoding (NOT Forth's -1/0)."""
+    a = ex.data_stack.pop()
+    ex.data_stack.append(1 if a == 0 else 0)
+
+
 # ---------------------------------------------------------------------------
 # Logical — bitwise on 0/1 encoding
 # ---------------------------------------------------------------------------
@@ -499,6 +508,7 @@ _PRIMITIVES: dict[str, PrimitiveFn] = {
     ">": _gt,
     "<=": _le,
     ">=": _ge,
+    "0=": _zero_eq,
     # Logical
     "AND": _and,
     "OR": _or,

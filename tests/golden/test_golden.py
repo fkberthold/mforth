@@ -84,16 +84,15 @@ GOLDEN_DIR = Path(__file__).parent
 # (see ``_compile_to_mlog`` below) and the header line it emits is
 # stripped before comparison, so the four fixtures that only needed the
 # final pass — if_then, begin_until, counter, getlink_index_mode — now
-# assert real golden equality.  blink remains xfail: its source uses the
-# ``0=`` word, which the v1 dictionary does not yet define (surfaced by
-# the .19 ship report; tracked under mforth-10t.18's primitive set).
-XFAIL_FIXTURES: Mapping[str, str] = {
-    "blink": "blocks on the `0=` word, undefined in the v1 dictionary "
-             "(UnresolvedWordError at blink.fs:14); the rest of the v1 "
-             "demo path — mforth-10t.18 primitives + mforth-10t.19 final "
-             "pass — has shipped, so flip this entry once `0=` lands and "
-             "run `pytest tests/golden --update-golden`",
-}
+# assert real golden equality.  As of mforth-0fd the ``0=`` word ships,
+# so blink — the v1 headline demo — also asserts real golden equality;
+# its xfail entry was removed.
+#
+# This map is currently empty: every golden fixture compiles end-to-end
+# and pins a real ``.expected.mlog``.  Re-add an entry (stem → blocker
+# bead reason) only when a fixture deliberately exercises a codegen path
+# that has not shipped yet.
+XFAIL_FIXTURES: Mapping[str, str] = {}
 
 
 def _discover_fixtures() -> list[Path]:
