@@ -1,0 +1,11 @@
+set s0 on
+op equal s0 s0 0
+jump 6 equal s0 0
+set s0 1
+set on s0
+jump 8 always 0 0
+set s0 0
+set on s0
+sensor s0 switch1 @config
+set s0 0.5
+wait s0

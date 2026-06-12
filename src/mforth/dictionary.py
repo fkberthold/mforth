@@ -144,6 +144,7 @@ _BUILTINS: list[BuiltinWord] = [
     BuiltinWord(">", StackEffect(2, 1), "greater than", "arith"),
     BuiltinWord("<=", StackEffect(2, 1), "less than or equal", "arith"),
     BuiltinWord(">=", StackEffect(2, 1), "greater than or equal", "arith"),
+    BuiltinWord("0=", StackEffect(1, 1), "1 if top == 0 else 0", "arith"),
     # Logical
     BuiltinWord("AND", StackEffect(2, 1), "logical and", "arith"),
     BuiltinWord("OR", StackEffect(2, 1), "logical or", "arith"),

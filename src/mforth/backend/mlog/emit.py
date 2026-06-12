@@ -669,6 +669,19 @@ class _Emitter:
             self._emit(out, "op", ("not", rw.writes[0], rw.reads[0], "0"))
             return None
 
+        # 0= — unary zero-test (bead mforth-0fd). ( n -- flag ): 1 if
+        # n == 0 else 0. Lowers to `op equal s<out> s<in> 0` — the same
+        # `op equal` that `=` uses (mlog 0/1 result kept verbatim), with
+        # the literal `0` as the second comparand. Slot effect is (1, 1),
+        # so reads[0] and writes[0] are the same slot (mirrors NOT). The
+        # host primitive (`_zero_eq`) pushes the matching 0/1 value, so
+        # REPL <-> mlog equivalence holds by construction.
+        if isinstance(entry, BuiltinWord) and entry.name == "0=":
+            self._guard_no_pending(pending_var, term)
+            rw = self._rw(term, slot_rewrite)
+            self._emit(out, "op", ("equal", rw.writes[0], rw.reads[0], "0"))
+            return None
+
         # Stack ops.
         if isinstance(entry, BuiltinWord) and entry.tag == "stack":
             self._guard_no_pending(pending_var, term)
