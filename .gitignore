@@ -11,6 +11,9 @@
 # Loom per-session ephemera (audit-project [AUTOFIX:gitignore-worktrees])
 .claude/worktrees/
 .claude/workflow-state.json
+.claude/loom-adopt-state.json
+.claude/loom-audit-state.json
+.claude/settings.json.pre-loom.bak
 /.worktrees/
 
 # Python
