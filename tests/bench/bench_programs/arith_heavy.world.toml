@@ -1,0 +1,9 @@
+# Sidecar for arith_heavy.fs — one Mode A message block for the PRINTFLUSH
+# sink. No clock tuning needed.
+[links.display]
+type   = "message"
+target = "message1"
+
+[clock]
+ipt      = 8
+realtime = false

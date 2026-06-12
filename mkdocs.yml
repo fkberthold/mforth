@@ -85,6 +85,7 @@ nav:
       - Sidecar schema: reference/sidecar-schema.md
       - Events: reference/events.md
       - mlog lowering: reference/mlog-lowering.md
+      - Optimization levels: reference/optimization-levels.md
   - Explanation:
       - explanation/index.md
       - Why mforth: explanation/why-mforth.md

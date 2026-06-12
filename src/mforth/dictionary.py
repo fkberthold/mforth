@@ -110,6 +110,22 @@ class Dictionary:
     def lookup(self, name: str) -> Optional[DictEntry]:
         return self._entries.get(name.lower())
 
+    def copy(self) -> "Dictionary":
+        """Return a shallow copy with an independent entry map.
+
+        The entries themselves (builtins, definitions, variables) are
+        immutable value objects shared by reference; only the
+        name→entry mapping is duplicated. This lets a pass that evicts
+        entries (e.g. dead-code elimination dropping unreachable
+        definitions) work on its own dictionary without disturbing the
+        caller's — the optimization orchestrator (bead mforth-10t.40)
+        relies on this so the library compile path stays side-effect-free
+        on the dictionary it is handed.
+        """
+        clone = Dictionary()
+        clone._entries = dict(self._entries)
+        return clone
+
     def __contains__(self, name: str) -> bool:
         return name.lower() in self._entries
 
