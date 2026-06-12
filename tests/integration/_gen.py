@@ -27,14 +27,16 @@ exercise that property we need a stream of programs that are guaranteed to:
   is bounded and nesting depth is shallow, so the emitted mlog is far below
   the ~1000-instruction processor limit even after inlining.
 
-Excluded primitive (deliberate)
-================================
+Numeric pop-print sink
+======================
 
-The ``.`` (pop-print) word is intentionally NOT generated: its mlog emit is
-being added in sibling bead ``mforth-va2`` during this same run. Including it
-here would produce false equivalence failures (REPL prints, mlog no-ops)
-that have nothing to do with a real divergence. ``PRINT`` and ``S" ..."``
-cover the IO-sink surface in the meantime.
+Both ``.`` (pop-print) and ``PRINT`` are ``( n -- )`` numeric IO sinks: each
+pops one value and funnels it through ``world.print`` → ``MessagePrintEvent``,
+and the mlog backend lowers both to ``print s<i>`` (bead ``mforth-va2`` landed
+the ``.`` emit, mirroring ``PRINT``'s slot form). They render identically —
+integer-valued floats drop the trailing ``.0`` and bools render ``1``/``0`` on
+both backends — so the generator uses them interchangeably wherever a single
+numeric stack value must be consumed.
 
 Generated subset
 ================
@@ -42,7 +44,7 @@ Generated subset
 literals (int + float) · arithmetic ``+ - * /`` · stack ops
 ``DUP DROP SWAP OVER ROT`` · comparisons ``< > =`` · ``IF/ELSE/THEN`` ·
 ``BEGIN/UNTIL`` · ``DO/LOOP`` (with ``I``) · ``VARIABLE`` + ``@`` / ``!`` ·
-``PRINT`` · ``S" ..."``.
+``PRINT`` · ``.`` · ``S" ..."``.
 """
 
 from __future__ import annotations
@@ -191,6 +193,31 @@ def _emit_print(draw, state: _GenState) -> list[str]:
     return ["PRINT"]
 
 
+def _emit_dot(draw, state: _GenState) -> list[str]:
+    """``.`` consumes one numeric stack item and prints it (1 -> 0).
+
+    Behaviourally identical to PRINT for the equivalence harness: both pop
+    one value, funnel it through ``world.print`` → ``MessagePrintEvent``, and
+    lower to ``print s<i>`` in the mlog backend (bead mforth-va2). Kept as a
+    distinct emitter so the coverage guard can confirm ``.`` is exercised.
+    """
+    state.budget -= 1
+    state.depth -= 1
+    return ["."]
+
+
+def _emit_numeric_sink(draw, state: _GenState) -> list[str]:
+    """Consume one numeric stack item via either ``.`` or ``PRINT`` (1 -> 0).
+
+    Picking between the two interchangeable numeric sinks here means every
+    place that drains a value (top-level, IF/loop neutral blocks, the final
+    stack drain) can emit ``.`` — so a bounded sweep reliably covers it.
+    """
+    if draw(st.booleans()):
+        return _emit_dot(draw, state)
+    return _emit_print(draw, state)
+
+
 def _emit_string_print(draw, state: _GenState) -> list[str]:
     """S" ..." pushes a string; PRINT immediately consumes it (net 0)."""
     state.budget -= 1
@@ -291,13 +318,14 @@ def _gen_neutral_block(draw, state: _GenState, *, allow_index: bool = False) -> 
             state.budget -= 1
         else:
             out.extend(_emit_push(draw, state))
-        # ...then consume it via PRINT (1 -> 0), keeping the block neutral.
+        # ...then consume it via a numeric sink (`.` or PRINT, 1 -> 0),
+        # keeping the block neutral.
         if state.budget <= 0:
             # Still must consume to stay neutral.
-            out.append("PRINT")
+            out.append("." if draw(st.booleans()) else "PRINT")
             state.depth -= 1
             break
-        out.extend(_emit_print(draw, state))
+        out.extend(_emit_numeric_sink(draw, state))
     return out
 
 
@@ -308,6 +336,7 @@ def _gen_term(draw, state: _GenState) -> list[str]:
     options.append(("push", 5))
     if state.depth >= 1:
         options.append(("print", 4))
+        options.append(("dot", 4))
         options.append(("stack_op", 3))
     if state.depth >= 2:
         options.append(("binary", 4))
@@ -336,6 +365,8 @@ def _gen_term(draw, state: _GenState) -> list[str]:
         return _emit_push(draw, state)
     if kind == "print":
         return _emit_print(draw, state)
+    if kind == "dot":
+        return _emit_dot(draw, state)
     if kind in ("stack_op", "stack_op2", "stack_op3"):
         return _emit_stack_op(draw, state)
     if kind == "binary":
@@ -394,9 +425,9 @@ def mforth_program(draw) -> str:
         if toks:
             lines.append(" ".join(toks))
 
-    # Drain the stack so nothing dangles (each PRINT is 1 -> 0).
+    # Drain the stack so nothing dangles (each `.`/PRINT is 1 -> 0).
     while state.depth > 0:
-        lines.append("PRINT")
+        lines.append("." if draw(st.booleans()) else "PRINT")
         state.depth -= 1
 
     lines.append("display PRINTFLUSH")
