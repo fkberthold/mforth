@@ -1,0 +1,5 @@
+# Stabilize the bd export: normalize the order of `_type:memory` lines in the
+# beads JSONL so the committed file does not re-dirty on every export.
+# Requires per-clone setup — run scripts/install-beads-filter.sh once.
+# See scripts/normalize-beads-jsonl.py and bead mforth-e5n.
+.beads/issues.jsonl filter=beads-normalize
