@@ -339,3 +339,38 @@ def test_peephole_strictly_shrinks_and_preserves() -> None:
     src = "3 sq_unused_marker" if False else "2 3 + 4 * ."
     orig, opt = _assert_equivalent(src)
     assert opt < orig
+
+
+def test_peephole_preserves_label_on_dropped_set() -> None:
+    """REGRESSION (found by the mforth-10t.40 benchmark harness on a
+    DO/LOOP fixture): when peephole folds a STAGING ``set`` that carries a
+    jump-target LABEL into its consumer, the label MUST survive — otherwise
+    a ``jump <label>`` aimed at it becomes unresolvable.
+
+    Shape: a ``set s0 X`` labelled ``L_end`` (a DO/LOOP fall-through target)
+    immediately followed by a ``print s0`` that consumes (and kills) ``s0``.
+    Peephole drops the ``set`` and rewrites the ``print`` to read ``X``
+    directly — but it must re-queue ``L_end`` as a label sentinel so
+    ``jump L_end`` still resolves to the right line. The dead-copy pass
+    already does this; peephole must match.
+    """
+    from mforth.backend.mlog.finalize import resolve_labels
+
+    instrs = [
+        (None, "jump", ("L_end", "always", "0", "0")),
+        ("L_end", "set", ("s0", "42")),
+        (None, "print", ("s0",)),
+    ]
+    opt = peephole(instrs)
+
+    # The label must still be discoverable somewhere in the stream — either
+    # attached to the rewritten consumer or carried as a standalone sentinel.
+    labels_present = {lab for (lab, _op, _ops) in opt if lab is not None}
+    assert "L_end" in labels_present, (
+        "peephole dropped the label on a folded staging set; the jump "
+        f"target vanished. stream={opt!r}"
+    )
+
+    # And the stream must finalize without an unresolved-jump KeyError.
+    resolved = resolve_labels(opt)
+    assert all(op != "set" or "L_end" not in ops for (_l, op, ops) in resolved)

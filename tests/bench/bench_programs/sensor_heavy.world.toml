@@ -1,0 +1,17 @@
+# Sidecar for sensor_heavy.fs — names the reactor, generator, and message
+# blocks by in-game name (Mode A).
+[links.reactor1]
+type   = "generic"
+target = "reactor1"
+
+[links.generator1]
+type   = "generic"
+target = "generator1"
+
+[links.display]
+type   = "message"
+target = "message1"
+
+[clock]
+ipt      = 8
+realtime = false

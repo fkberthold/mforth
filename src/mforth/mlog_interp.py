@@ -348,6 +348,11 @@ class MlogInterpreter:
     user_variables: set = field(default_factory=set)
     instructions: list = field(default_factory=list, init=False)
     variables: dict = field(default_factory=dict, init=False)
+    # Total instruction dispatches across all passes of the most recent
+    # `run()`. Used by the optimization benchmark harness (bead
+    # mforth-10t.40) to measure dynamic instructions-per-tick. Additive +
+    # default 0; existing callers that never read it are unaffected.
+    executed_steps: int = field(default=0, init=False)
 
     def __post_init__(self) -> None:
         self.instructions = self._lex(self.text)
@@ -494,6 +499,7 @@ class MlogInterpreter:
         Returns the number of completed passes (always equals
         ``iterations`` unless an unrecoverable error was raised).
         """
+        self.executed_steps = 0
         if not self.instructions:
             return 0
         n = len(self.instructions)
@@ -524,9 +530,11 @@ class MlogInterpreter:
                 self.variables["@counter"] = 0
                 completed += 1
                 steps += 1
+                self.executed_steps = steps
                 continue
             advance = self._dispatch(opcode, operands)
             steps += 1
+            self.executed_steps = steps
             if advance:
                 self.variables["@counter"] = pc + 1
         return completed

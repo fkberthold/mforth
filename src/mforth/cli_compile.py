@@ -49,14 +49,14 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-from mforth.backend.mlog import allocate_slots, emit
-from mforth.backend.mlog.finalize import SidecarSubstitutionError, finalize
+from mforth.backend.mlog.finalize import SidecarSubstitutionError
 from mforth.backend.sidecar import SidecarError, WorldConfig, load_sidecar
 from mforth.cli import register_subcommand
-from mforth.dictionary import UnresolvedWordError, UserVariable, resolve, standard_dictionary
+from mforth.dictionary import UnresolvedWordError, UserVariable, standard_dictionary
 from mforth.lex import LexError
-from mforth.parse import ParseError, SrcLoc, parse
-from mforth.stackcheck import StackError, stackcheck
+from mforth.optimize import OptLevel, compile_text
+from mforth.parse import ParseError, SrcLoc
+from mforth.stackcheck import StackError
 
 
 # ---------------------------------------------------------------------------
@@ -94,6 +94,47 @@ def _configure_compile_parser(parser: argparse.ArgumentParser) -> None:
             "comment lines)"
         ),
     )
+    # Optimization level (bead mforth-10t.40). The four flags are mutually
+    # exclusive store_const flags into a shared ``opt_level`` dest. The CLI
+    # DEFAULT is ``-Ofast`` (Tier A + Tier B) — fast > small. The *library*
+    # compile path defaults to O0 so the headline REPL ↔ mlog equivalence
+    # harness stays byte/event-identical; only the CLI opts into Ofast.
+    opt_group = parser.add_mutually_exclusive_group()
+    opt_group.add_argument(
+        "-O0",
+        dest="opt_level",
+        action="store_const",
+        const=OptLevel.O0,
+        help="no optimization passes.",
+    )
+    opt_group.add_argument(
+        "-O1",
+        dest="opt_level",
+        action="store_const",
+        const=OptLevel.O1,
+        help=(
+            "Tier A: constant folding + dead-code elimination (AST) and "
+            "dead-copy elimination + peephole collapse (post-emit)."
+        ),
+    )
+    opt_group.add_argument(
+        "-Ofast",
+        dest="opt_level",
+        action="store_const",
+        const=OptLevel.OFAST,
+        help="Tier B (DEFAULT): -O1 plus common-subexpression elimination and loop-invariant code motion.",
+    )
+    opt_group.add_argument(
+        "-Osize",
+        dest="opt_level",
+        action="store_const",
+        const=OptLevel.OSIZE,
+        help=(
+            "size fallback: -Ofast plus @counter subroutine emission for "
+            "programs that exceed the per-processor instruction budget."
+        ),
+    )
+    parser.set_defaults(opt_level=OptLevel.OFAST)
 
 
 # ---------------------------------------------------------------------------
@@ -161,32 +202,34 @@ def _handle_compile(args: argparse.Namespace) -> int:
                 UserVariable(name=spec.mforth_name, src_loc=seed_loc)
             )
 
+    # Optimization level (bead mforth-10t.40). Defaults to -Ofast for the
+    # CLI; the underlying compile_text library default is O0 (so the
+    # equivalence harness stays byte/event-identical). compile_text runs the
+    # full pipeline: parse → resolve → stackcheck → AST passes →
+    # re-stackcheck → emit → post-emit passes → finalize.
+    opt_level = getattr(args, "opt_level", OptLevel.OFAST)
+
     try:
         text = source_path.read_text()
-        program = parse(text, file=str(source_path))
-        dictionary = resolve(program, dictionary=dictionary)
-        result = stackcheck(program, dictionary=dictionary)
-        slots = allocate_slots(result)
-        instrs = emit(result, slots)
+        output_text = compile_text(
+            text,
+            opt_level=opt_level,
+            world_config=world_config,
+            dictionary=dictionary,
+            source_path=source_path,
+            sidecar_path=sidecar_path,
+            emit_comments=args.emit_comments,
+        )
     except (LexError, ParseError, UnresolvedWordError, StackError) as e:
         print(_format_pipeline_error(e, source_path), file=sys.stderr)
+        return 1
+    except SidecarSubstitutionError as e:
+        print(str(e), file=sys.stderr)
         return 1
     except NotImplementedError as e:
         # Catch the emit-time cell-free / not-yet-supported errors so the
         # user gets a one-line stderr instead of a Python traceback.
         print(f"{source_path}: {e}", file=sys.stderr)
-        return 1
-
-    try:
-        output_text = finalize(
-            instrs,
-            world_config=world_config,
-            source_path=source_path,
-            sidecar_path=sidecar_path,
-            emit_comments=args.emit_comments,
-        )
-    except SidecarSubstitutionError as e:
-        print(str(e), file=sys.stderr)
         return 1
 
     output_path = Path(args.output)

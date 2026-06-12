@@ -354,6 +354,17 @@ def peephole(instrs: Sequence[tuple]) -> list:
     out: list = []
     for idx in range(n):
         if idx in drop:
+            # The folded staging `set` is removed — but if it carried a
+            # label (e.g. a DO/LOOP fall-through target `L_do_N_end`),
+            # re-queue that label as a standalone sentinel so a
+            # `jump <label>` aimed at it still resolves to the right line.
+            # Mirrors the dead-copy pass's label-preservation contract;
+            # without this, folding a labelled staging set silently
+            # orphans the jump target (regression found by the
+            # mforth-10t.40 benchmark harness on a DO/LOOP fixture).
+            dropped_label = instrs[idx][0]
+            if dropped_label is not None:
+                out.append((dropped_label, None, None))
             continue
         out.append(rewrite.get(idx, instrs[idx]))
     return out

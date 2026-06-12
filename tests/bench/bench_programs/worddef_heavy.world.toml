@@ -1,0 +1,8 @@
+# Sidecar for worddef_heavy.fs.
+[links.display]
+type   = "message"
+target = "message1"
+
+[clock]
+ipt      = 8
+realtime = false
