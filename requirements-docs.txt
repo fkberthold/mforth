@@ -1,0 +1,13 @@
+# Documentation toolchain — pinned so the published GitHub Pages site
+# (.github/workflows/docs.yml) and a local `mkdocs serve` build from the
+# exact same MkDocs Material + plugin versions. These are docs-only deps;
+# they are intentionally NOT part of the package's runtime or [dev] extras
+# in pyproject.toml (a contributor running the test suite never needs
+# mkdocs, and the published wheel never needs it either).
+#
+# Bumping a pin here is the one place a docs-toolchain upgrade lands;
+# keep the upper bounds so a major MkDocs / Material release can't break
+# `mkdocs build --strict` in CI unattended.
+mkdocs>=1.6,<2
+mkdocs-material>=9.5,<10
+mkdocs-include-markdown-plugin>=6.2,<7
