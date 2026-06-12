@@ -772,6 +772,367 @@ def _sidecar_link_candidates(uri: str) -> list[tuple[str, str]]:
     return [(link.mforth_name, link.type) for link in world.links]
 
 
+def _sidecar_path_for(uri: str) -> str | None:
+    """Return the filesystem path of the sibling ``<stem>.world.toml`` for
+    a Forth ``uri``, or None when the URI isn't a file URI / has no sibling
+    sidecar on disk. Used by go-to-definition to navigate a sidecar-bound
+    name to its declaring sidecar file."""
+    import os
+    from urllib.parse import urlparse
+
+    parsed = urlparse(uri)
+    if parsed.scheme not in ("file", ""):
+        return None
+    fs_path = parsed.path or uri
+    if not fs_path:
+        return None
+    base, ext = os.path.splitext(fs_path)
+    if ext == ".toml":
+        return None
+    sidecar_path = base + ".world.toml"
+    if not os.path.isfile(sidecar_path):
+        return None
+    return sidecar_path
+
+
+# ---------------------------------------------------------------------------
+# Go-to-definition (bead mforth-10t.26, part 1)
+# ---------------------------------------------------------------------------
+#
+# `definition_for(text, *, uri, position)` is the fourth pure-function seam
+# alongside analyze_document / hover_for / completions_for. It answers
+# `textDocument/definition`: the cursor sits on a WordCall; we resolve the
+# name and point at the source location of its declaration.
+#
+# Resolution targets, in priority order:
+#
+#   1. Sidecar link name — `[links.<name>]` in the sibling `.world.toml`.
+#      Navigate to the sidecar file (head, since tomllib doesn't surface
+#      per-key positions in v1). Checked FIRST so a sidecar-pre-seeded
+#      UserVariable (synthetic src_loc at the .fs head) never shadows the
+#      real sidecar target.
+#   2. User Definition — `: name ... ;`. Navigate to the `:` opener
+#      (the Definition.src_loc, same anchor hover uses).
+#   3. User VARIABLE — navigate to the declaration's NAME token
+#      (UserVariable.src_loc).
+#
+# Built-ins, literals, control-flow keywords, unresolved words, and a
+# document that fails to parse all yield None (nothing to navigate to).
+# Mirrors hover's parse/resolve-failure → None policy.
+
+
+def definition_for(
+    text: str, *, uri: str, position: lsp.Position
+) -> lsp.Location | None:
+    """Return the source `Location` that defines the WordCall under the
+    cursor, or None when there's nothing navigable there."""
+    file = _file_from_uri(uri)
+
+    try:
+        program = parse(text, file=file)
+    except (LexError, ParseError):
+        return None
+
+    term = _term_at_position(program, position)
+    if not isinstance(term, (WordCall, VarRef)):
+        return None
+    name = term.name
+
+    # 1. Sidecar link names win — they're the real declaration site.
+    sidecar_names = {ln for ln, _t in _sidecar_link_candidates(uri)}
+    if name in sidecar_names:
+        sidecar_path = _sidecar_path_for(uri)
+        if sidecar_path is not None:
+            return _location(_path_to_uri(sidecar_path), 1, 1)
+        return None
+
+    # 2 + 3. Resolve and look the name up. Pre-seed sidecar links so a
+    # resolve over a sidecar-bound document doesn't raise before we reach
+    # the user-symbol lookup (the link branch above already handled those).
+    dictionary = standard_dictionary()
+    sidecar_src_loc = SrcLoc(file=file, line=1, col=1)
+    for link_name, _link_type in _sidecar_link_candidates(uri):
+        if link_name not in dictionary:
+            dictionary.add_variable(
+                UserVariable(name=link_name, src_loc=sidecar_src_loc)
+            )
+    try:
+        dictionary = resolve(program, dictionary=dictionary)
+    except UnresolvedWordError:
+        return None
+
+    entry = dictionary.lookup(name)
+    if isinstance(entry, Definition):
+        loc = entry.src_loc
+        return _location(uri, loc.line, loc.col)
+    if isinstance(entry, UserVariable):
+        loc = entry.src_loc
+        return _location(uri, loc.line, loc.col)
+    # BuiltinWord (or None) — no navigable source location.
+    return None
+
+
+def _location(uri: str, line_1based: int, col_1based: int) -> lsp.Location:
+    """Build a single-character LSP Location at a 1-based source position."""
+    start = _lsp_position(line_1based, col_1based)
+    end = lsp.Position(line=start.line, character=start.character + 1)
+    return lsp.Location(uri=uri, range=lsp.Range(start=start, end=end))
+
+
+def _path_to_uri(path: str) -> str:
+    """Convert a filesystem path to a ``file://`` URI."""
+    from pathlib import Path
+
+    return Path(path).as_uri()
+
+
+# ---------------------------------------------------------------------------
+# Semantic tokens (bead mforth-10t.26, part 2)
+# ---------------------------------------------------------------------------
+#
+# `semantic_token_spans(text)` classifies every lexeme into one standard
+# LSP semantic-token TYPE so the editor can colorize Forth source. It does
+# its own single-pass scan (NOT the lexer) because the lexer discards plain
+# comments — and comments are one of the classes we must surface. The scan
+# mirrors the lexer's whitespace-delimited, standalone-token discipline:
+#
+#   * `( ... )` paren comment        → comment   (whole span incl. parens)
+#   * `\ ...`  line comment          → comment   (to end of line)
+#   * `."` / `S"` string             → string    (opener through closing ")
+#   * integer / float literal        → number
+#   * `:` / `;` + control keywords   → keyword
+#   * `@`-identifier (magic var)     → macro
+#   * sidecar link name (if known)   → macro
+#   * anything else (a WORD)         → function for word-calls, variable
+#                                      for VARIABLE references
+#
+# Word-vs-variable classification: a WORD is a `variable` iff it names a
+# source-declared VARIABLE; otherwise `function` (built-in or user word).
+# We compute the VARIABLE name set by a best-effort parse; if the document
+# doesn't parse, every WORD falls back to `function` (the teaching surface
+# still colorizes reasonably). The classification never raises.
+#
+# `semantic_tokens_for(text, *, uri)` wraps the spans in the LSP
+# delta-encoded `data` array using SEMANTIC_TOKEN_LEGEND.
+
+SEMANTIC_TOKEN_LEGEND = lsp.SemanticTokensLegend(
+    token_types=[
+        lsp.SemanticTokenTypes.Keyword.value,
+        lsp.SemanticTokenTypes.Function.value,
+        lsp.SemanticTokenTypes.Variable.value,
+        lsp.SemanticTokenTypes.Number.value,
+        lsp.SemanticTokenTypes.String.value,
+        lsp.SemanticTokenTypes.Comment.value,
+        lsp.SemanticTokenTypes.Macro.value,
+    ],
+    token_modifiers=[],
+)
+
+_TOKEN_TYPE_INDEX = {name: i for i, name in enumerate(SEMANTIC_TOKEN_LEGEND.token_types)}
+
+
+def _variable_names(text: str, file: str) -> set[str]:
+    """Best-effort set of source-declared VARIABLE names (lowercased) so
+    semantic tokens can color references as `variable`. Returns an empty
+    set on any parse failure."""
+    from mforth.dictionary import _collect_variable_declarations
+
+    try:
+        program = parse(text, file=file)
+    except (LexError, ParseError):
+        return set()
+    return {v.name.lower() for v in _collect_variable_declarations(program)}
+
+
+def semantic_token_spans(text: str) -> list[tuple[int, int, int, str]]:
+    """Classify `text` into absolute semantic-token spans.
+
+    Returns a list of ``(line, col, length, type_name)`` tuples, 0-based
+    line + col, in document order (sorted by position, non-overlapping).
+    Pure + total: never raises, never touches the filesystem.
+    """
+    variable_names = _variable_names(text, "<semantic>")
+    spans: list[tuple[int, int, int, str]] = []
+
+    n = len(text)
+    i = 0
+    line = 0
+    col = 0
+
+    def emit(start_line: int, start_col: int, length: int, type_name: str) -> None:
+        if length > 0:
+            spans.append((start_line, start_col, length, type_name))
+
+    def at_edge(idx: int) -> bool:
+        if idx < 0 or idx >= n:
+            return True
+        return text[idx] in " \t\n\r"
+
+    while i < n:
+        ch = text[i]
+
+        # Whitespace — advance line/col bookkeeping.
+        if ch == "\n":
+            line += 1
+            col = 0
+            i += 1
+            continue
+        if ch in " \t\r":
+            col += 1
+            i += 1
+            continue
+
+        start_line, start_col, start_i = line, col, i
+
+        # Line comment `\ ...` (standalone backslash) → to end of line.
+        if ch == "\\" and at_edge(i - 1) and at_edge(i + 1):
+            j = i
+            while j < n and text[j] != "\n":
+                j += 1
+            emit(start_line, start_col, j - i, "comment")
+            col += j - i
+            i = j
+            continue
+
+        # Paren comment `( ... )` (standalone open paren).
+        if ch == "(" and at_edge(i - 1) and at_edge(i + 1):
+            j = i + 1
+            run_col = start_col + 1
+            run_line = start_line
+            while j < n and text[j] != ")":
+                if text[j] == "\n":
+                    # Multi-line comment: emit the current line's run, reset.
+                    emit(run_line, run_col if j == i + 1 else 0, 0, "comment")
+                    run_line += 1
+                j += 1
+            if j < n:
+                j += 1  # consume the `)`
+            # Emit comment span(s). For simplicity (and because v1 comments
+            # are single-line in practice) emit one span per physical line.
+            _emit_multiline(emit, text, start_i, j, start_line, start_col, "comment")
+            # Advance i/line/col by walking the consumed region.
+            i, line, col = _advance(text, start_i, j, start_line, start_col)
+            continue
+
+        # String `."` / `S"` (standalone opener) → through closing quote.
+        if (
+            i + 1 < n
+            and text[i + 1] == '"'
+            and ch in (".", "S")
+            and at_edge(i - 1)
+            and at_edge(i + 2)
+        ):
+            j = i + 2
+            while j < n and text[j] != '"' and text[j] != "\n":
+                j += 1
+            if j < n and text[j] == '"':
+                j += 1  # consume closing quote
+            emit(start_line, start_col, j - i, "string")
+            col += j - i
+            i = j
+            continue
+
+        # General lexeme: read a whitespace-delimited run.
+        j = i
+        while j < n and text[j] not in " \t\r\n":
+            j += 1
+        lexeme = text[i:j]
+        length = j - i
+
+        type_name = _classify_lexeme(lexeme, variable_names)
+        emit(start_line, start_col, length, type_name)
+        col += length
+        i = j
+
+    spans.sort(key=lambda s: (s[0], s[1]))
+    return spans
+
+
+def _emit_multiline(emit, text, start_i, end_i, start_line, start_col, type_name):
+    """Emit one comment span per physical line covering text[start_i:end_i]."""
+    seg_line = start_line
+    seg_col = start_col
+    seg_start = start_i
+    k = start_i
+    while k < end_i:
+        if text[k] == "\n":
+            emit(seg_line, seg_col, k - seg_start, type_name)
+            seg_line += 1
+            seg_col = 0
+            seg_start = k + 1
+        k += 1
+    emit(seg_line, seg_col, end_i - seg_start, type_name)
+
+
+def _advance(text, start_i, end_i, start_line, start_col):
+    """Return (new_i, new_line, new_col) after consuming text[start_i:end_i]."""
+    line = start_line
+    col = start_col
+    k = start_i
+    while k < end_i:
+        if text[k] == "\n":
+            line += 1
+            col = 0
+        else:
+            col += 1
+        k += 1
+    return end_i, line, col
+
+
+def _classify_lexeme(lexeme: str, variable_names: set[str]) -> str:
+    """Classify a whitespace-delimited lexeme into a semantic-token type."""
+    if lexeme in (":", ";"):
+        return "keyword"
+    low = lexeme.lower()
+    if low in _SEMANTIC_KEYWORDS:
+        return "keyword"
+    if _is_number_lexeme(lexeme):
+        return "number"
+    if lexeme.startswith("@") and len(lexeme) > 1:
+        return "macro"
+    if low in variable_names:
+        return "variable"
+    return "function"
+
+
+_SEMANTIC_KEYWORDS = {
+    "if", "else", "then",
+    "begin", "until", "while", "repeat",
+    "do", "loop",
+}
+
+
+def _is_number_lexeme(lexeme: str) -> bool:
+    """True iff `lexeme` is an integer or float literal (mirrors the lexer's
+    int / float recognizers)."""
+    from mforth.lex import _parse_float_or_none, _parse_int_or_none
+
+    return (
+        _parse_int_or_none(lexeme) is not None
+        or _parse_float_or_none(lexeme) is not None
+    )
+
+
+def semantic_tokens_for(text: str, *, uri: str) -> lsp.SemanticTokens:
+    """Return LSP delta-encoded semantic tokens for `text`. `uri` is
+    accepted for symmetry with the other seams (semantic classification is
+    URI-independent in v1 — no cross-file resolution)."""
+    spans = semantic_token_spans(text)
+    data: list[int] = []
+    prev_line = 0
+    prev_col = 0
+    for s_line, s_col, length, type_name in spans:
+        type_idx = _TOKEN_TYPE_INDEX[type_name]
+        if s_line == prev_line:
+            delta_start = s_col - prev_col
+        else:
+            delta_start = s_col
+        data.extend([s_line - prev_line, delta_start, length, type_idx, 0])
+        prev_line = s_line
+        prev_col = s_col
+    return lsp.SemanticTokens(data=data)
+
+
 # ---------------------------------------------------------------------------
 # String / comment context detection
 # ---------------------------------------------------------------------------
@@ -1005,7 +1366,89 @@ def create_server() -> LanguageServer:
         items = completions_for(text, uri=uri, position=params.position)
         return lsp.CompletionList(is_incomplete=False, items=items)
 
+    @server.feature(lsp.TEXT_DOCUMENT_DEFINITION)
+    def _on_definition(
+        ls: LanguageServer, params: lsp.DefinitionParams
+    ) -> lsp.Location | None:
+        uri = params.text_document.uri
+        # Sidecar TOML documents don't get go-to-definition in v1.
+        if uri.endswith(SIDECAR_SUFFIX):
+            return None
+        text = document_cache.get(uri)
+        if text is None:
+            return None
+        return definition_for(text, uri=uri, position=params.position)
+
+    @server.feature(
+        lsp.TEXT_DOCUMENT_SEMANTIC_TOKENS_FULL,
+        lsp.SemanticTokensRegistrationOptions(
+            legend=SEMANTIC_TOKEN_LEGEND, full=True
+        ),
+    )
+    def _on_semantic_tokens(
+        ls: LanguageServer, params: lsp.SemanticTokensParams
+    ) -> lsp.SemanticTokens:
+        uri = params.text_document.uri
+        # Sidecar TOML documents don't get semantic tokens in v1.
+        if uri.endswith(SIDECAR_SUFFIX):
+            return lsp.SemanticTokens(data=[])
+        text = document_cache.get(uri)
+        if text is None:
+            return lsp.SemanticTokens(data=[])
+        return semantic_tokens_for(text, uri=uri)
+
+    @server.feature(lsp.WORKSPACE_DID_CHANGE_WATCHED_FILES)
+    def _on_did_change_watched_files(
+        ls: LanguageServer, params: lsp.DidChangeWatchedFilesParams
+    ) -> None:
+        # When a `<stem>.world.toml` sidecar changes, re-validate every
+        # open `<stem>.fs` Forth document whose link resolution depends on
+        # it and republish its diagnostics. Editing the sidecar can flip a
+        # name between resolved and unresolved.
+        for change in params.changes:
+            changed_uri = change.uri
+            if not changed_uri.endswith(SIDECAR_SUFFIX):
+                continue
+            for fs_uri in _forth_docs_for_sidecar(changed_uri, document_cache):
+                text = document_cache.get(fs_uri)
+                if text is None:
+                    continue
+                diags = analyze_document(text, uri=fs_uri)
+                ls.text_document_publish_diagnostics(
+                    lsp.PublishDiagnosticsParams(uri=fs_uri, diagnostics=diags)
+                )
+
     return server
+
+
+def _forth_docs_for_sidecar(
+    sidecar_uri: str, document_cache: dict[str, str]
+) -> list[str]:
+    """Return the URIs of open `.fs` documents that share the sidecar's
+    stem. ``blink.world.toml`` matches an open ``blink.fs``.
+
+    Matching is done on the filesystem-path stem so it's robust to URI
+    spelling differences. Returns only documents currently in the cache
+    (an edit to a sidecar with no open sibling is a no-op)."""
+    import os
+    from urllib.parse import urlparse
+
+    parsed = urlparse(sidecar_uri)
+    sidecar_path = parsed.path or sidecar_uri
+    if not sidecar_path.endswith(SIDECAR_SUFFIX):
+        return []
+    stem = sidecar_path[: -len(SIDECAR_SUFFIX)]  # drop ".world.toml"
+
+    matches: list[str] = []
+    for fs_uri in document_cache:
+        if fs_uri.endswith(SIDECAR_SUFFIX):
+            continue
+        fs_parsed = urlparse(fs_uri)
+        fs_path = fs_parsed.path or fs_uri
+        fs_base, _ext = os.path.splitext(fs_path)
+        if fs_base == stem:
+            matches.append(fs_uri)
+    return matches
 
 
 def _extract_change_text(
@@ -1063,12 +1506,16 @@ def serve_stdio() -> int:
 
 __all__ = [
     "DIAGNOSTIC_SOURCE",
+    "SEMANTIC_TOKEN_LEGEND",
     "SERVER_NAME",
     "SIDECAR_SUFFIX",
     "analyze_document",
     "analyze_sidecar",
     "completions_for",
     "create_server",
+    "definition_for",
     "hover_for",
+    "semantic_token_spans",
+    "semantic_tokens_for",
     "serve_stdio",
 ]
