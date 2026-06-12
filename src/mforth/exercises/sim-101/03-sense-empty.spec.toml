@@ -1,0 +1,20 @@
+# Exercise spec — bundled package data (track sim-101, bead mforth-roz.5).
+#
+# Part II, chapter 11 (sensing). SENSOR reads a block property and
+# pushes it. In the simulator a freshly-declared block holds nothing, so
+# every stocked property reads 0 — which is exactly the case a real
+# controller must handle (an empty vault). The learner senses copper and
+# prints a DECISION about it (is it empty?), which is reproducible
+# regardless of the sensor wiring.
+id = "sim-101/03-sense-empty"
+prompt = "Define `copper-empty?` ( -- flag ): SENSOR the `@copper` level of `vault1` and leave 1 if it is empty (level = 0), else 0."
+hint = "`vault1 @copper SENSOR` pushes the level. Then `0 =` turns  is it zero?  into a 1/0 flag. The driver prints it for you."
+sidecar = """
+[links.vault1]
+type   = "core"
+target = "vault1"
+"""
+
+[[case]]
+driver = "copper-empty? ."
+expect = ["1"]

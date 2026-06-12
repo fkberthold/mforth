@@ -1,0 +1,19 @@
+# Exercise spec — bundled package data (track sim-101, bead mforth-roz.5).
+#
+# Part II, chapter 10 (the simulator). A two-line readout: a label
+# string AND a value, each its own PRINT. Each PRINT is its own
+# comparison entry — the checker sees a LIST of printed strings, not one
+# concatenated line. `@mapw` is a deterministic magic var (always 40 in
+# the simulator) so the value half is reproducible.
+id = "sim-101/02-label"
+prompt = "Define `readout` ( -- ): PRINT the label  width=  then PRINT the map width `@mapw`, then flush to `display`."
+hint = "Two PRINTs in a row: `S\" width=\" PRINT` then `@mapw PRINT`. Each PRINT is a separate line of output. Finish with `display PRINTFLUSH`."
+sidecar = """
+[links.display]
+type   = "message"
+target = "message1"
+"""
+
+[[case]]
+driver = "readout"
+expect = ["width=", "40"]
