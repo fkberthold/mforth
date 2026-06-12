@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 from mforth.backend.host import ExecutionError
@@ -50,9 +51,11 @@ from mforth.dictionary import UnresolvedWordError
 from mforth.lex import LexError
 from mforth.parse import ParseError
 from mforth.stackcheck import StackError
-
+from mforth.viz.launcher import launch_viz
 
 _SIGINT_EXIT_CODE = 130  # POSIX: 128 + SIGINT (2)
+_DEFAULT_VIZ_PORT = 7878  # bead .22: default HTTP port for `--serve`
+_DEFAULT_TICK_MS = 100  # bead .22: default pacing — one iteration per 100ms
 
 
 def _configure_run_parser(parser: argparse.ArgumentParser) -> None:
@@ -79,6 +82,36 @@ def _configure_run_parser(parser: argparse.ArgumentParser) -> None:
         dest="no_loop",
         action="store_true",
         help="execute the top-level sequence once instead of auto-looping",
+    )
+    parser.add_argument(
+        "--serve",
+        dest="serve",
+        action="store_true",
+        help=(
+            "launch the web visualizer (bound to 127.0.0.1) and stream the "
+            "run's EventStream to connected browsers"
+        ),
+    )
+    parser.add_argument(
+        "--port",
+        dest="port",
+        type=int,
+        default=_DEFAULT_VIZ_PORT,
+        help=(
+            "HTTP port for the --serve web viz (default %(default)s; 0 asks "
+            "the OS for a free port). Ignored without --serve."
+        ),
+    )
+    parser.add_argument(
+        "--tick-ms",
+        dest="tick_ms",
+        type=int,
+        default=_DEFAULT_TICK_MS,
+        help=(
+            "pacing delay in milliseconds between auto-loop iterations "
+            "(default %(default)s) so a --serve viewer can watch. 0 disables "
+            "pacing. Ignored without --serve and under --no-loop."
+        ),
     )
 
 
@@ -122,38 +155,66 @@ def _handle_run(args: argparse.Namespace) -> int:
         print(_format_pipeline_error(e, source_path), file=sys.stderr)
         return 1
 
-    if args.no_loop:
+    # --serve (bead .22): boot the web viz subscribed to the run's
+    # EventStream. The server is torn down on every exit path via the
+    # finally below — `VizServer.stop` detaches the subscriber + joins
+    # the HTTP/WS threads, so a `--no-loop --serve` run leaves no
+    # lingering daemons.
+    viz_server = None
+    if getattr(args, "serve", False):
+        viz_server = launch_viz(
+            runner, port=getattr(args, "port", _DEFAULT_VIZ_PORT)
+        )
+        print(f"Viz: http://127.0.0.1:{viz_server.http_port}", flush=True)
+
+    try:
+        if args.no_loop:
+            try:
+                runner.run_once()
+            except ExecutionError as e:
+                print(str(e), file=sys.stderr)
+                return 1
+            return 0
+
+        # Pacing: when serving, sleep `--tick-ms` between iterations so a
+        # human watching the viz can follow the auto-loop. Disabled (no
+        # callback) when not serving or when tick-ms is 0, preserving the
+        # bead .14 unpaced behaviour for headless runs + tests.
+        on_iteration = None
+        tick_ms = getattr(args, "tick_ms", _DEFAULT_TICK_MS)
+        if viz_server is not None and tick_ms and tick_ms > 0:
+            delay = tick_ms / 1000.0
+
+            def on_iteration(_count: int, _delay: float = delay) -> None:
+                time.sleep(_delay)
+
         try:
-            runner.run_once()
+            iterations = runner.run_forever(on_iteration=on_iteration)
+        except KeyboardInterrupt:
+            # `Runner.run_forever` catches KeyboardInterrupt and returns
+            # cleanly, but if a callback or realtime sleep raises one
+            # outside that catch we still want the clean exit path.
+            iterations = runner.iterations
         except ExecutionError as e:
             print(str(e), file=sys.stderr)
             return 1
-        return 0
+        else:
+            # Reaching the bottom of the try without a KeyboardInterrupt
+            # only happens if `run_forever` returned (which currently only
+            # happens via SIGINT or a callback raising). Treat as a
+            # SIGINT-style exit so the summary path runs.
+            pass
 
-    try:
-        iterations = runner.run_forever()
-    except KeyboardInterrupt:
-        # `Runner.run_forever` catches KeyboardInterrupt and returns
-        # cleanly, but if a callback or realtime sleep raises one outside
-        # that catch we still want the clean exit path.
-        iterations = runner.iterations
-    except ExecutionError as e:
-        print(str(e), file=sys.stderr)
-        return 1
-    else:
-        # Reaching the bottom of the try without a KeyboardInterrupt only
-        # happens if `run_forever` returned (which currently only happens
-        # via SIGINT or a callback raising). Treat as a SIGINT-style exit
-        # so the summary path runs.
-        pass
-
-    tick = runner.executor.world.events.tick
-    print(
-        f"mforth: interrupted after {iterations} iteration(s); "
-        f"simulated tick={tick}",
-        file=sys.stderr,
-    )
-    return _SIGINT_EXIT_CODE
+        tick = runner.executor.world.events.tick
+        print(
+            f"mforth: interrupted after {iterations} iteration(s); "
+            f"simulated tick={tick}",
+            file=sys.stderr,
+        )
+        return _SIGINT_EXIT_CODE
+    finally:
+        if viz_server is not None:
+            viz_server.stop()
 
 
 def register() -> None:
