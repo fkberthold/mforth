@@ -106,3 +106,109 @@ def test_app_js_under_500_lines(server: "VizServer") -> None:
         body = r.read().decode("utf-8")
     line_count = body.count("\n") + (0 if body.endswith("\n") else 1)
     assert line_count < 500, f"app.js is {line_count} lines (budget: <500)"
+
+
+# ---------------------------------------------------------------------------
+# Bead mforth-10t.22 — `mforth run --serve` wiring
+#
+# These tests pin the seam: the viz launcher boots a VizServer bound to a
+# Runner's MockWorld and subscribes it to the run's EventStream. The
+# headline assertion (per the bead's acceptance) is that running a program
+# that PRINTFLUSHes streams a ``MessagePrintflushEvent`` to the viz
+# subscriber. We assert at the EventStream subscription boundary (no live
+# socket required), so the test is deterministic and browser-free.
+# ---------------------------------------------------------------------------
+
+EXAMPLES_DIR = (
+    __import__("pathlib").Path(__file__).resolve().parents[2] / "examples"
+)
+
+
+def test_launch_viz_subscribes_to_runner_event_stream() -> None:
+    """``launch_viz`` MUST attach the VizServer's event subscriber to the
+    runner's ``executor.world.events`` stream, on ephemeral ports."""
+    from mforth.backend.runner import Runner
+    from mforth.viz.launcher import launch_viz
+
+    runner = Runner.from_path(EXAMPLES_DIR / "blink.fs")
+    stream = runner.executor.world.events
+    before = len(stream.subscribers)
+
+    srv = launch_viz(runner, port=0)
+    try:
+        # A subscriber was added, and it is the VizServer's own callback.
+        assert len(stream.subscribers) == before + 1
+        assert srv._subscriber in stream.subscribers
+        # Ephemeral binding resolved to a real port.
+        assert srv.http_port > 0
+        assert srv.ws_port > 0
+    finally:
+        srv.stop()
+    # stop() detaches the subscriber cleanly.
+    assert srv._subscriber not in stream.subscribers
+
+
+def test_serve_streams_printflush_event_to_viz_subscriber() -> None:
+    """Running blink.fs once with the viz attached MUST deliver at least
+    one ``MessagePrintflushEvent`` to the viz subscriber. We tap the same
+    EventStream the viz subscribes to (no browser, no socket)."""
+    from mforth.backend.runner import Runner
+    from mforth.backend.world import MessagePrintflushEvent
+    from mforth.viz.launcher import launch_viz
+
+    runner = Runner.from_path(EXAMPLES_DIR / "blink.fs")
+    stream = runner.executor.world.events
+
+    received: list = []
+    stream.subscribe(received.append)
+
+    srv = launch_viz(runner, port=0)
+    try:
+        runner.run_once()
+    finally:
+        srv.stop()
+
+    assert any(isinstance(e, MessagePrintflushEvent) for e in received), (
+        "expected a MessagePrintflushEvent to flow through the EventStream "
+        "the viz is subscribed to"
+    )
+
+
+def test_run_handler_serve_flag_boots_viz_and_executes() -> None:
+    """The ``run`` CLI handler MUST, when ``--serve`` is set, boot the viz
+    and execute the program. Driven via the handler (not a subprocess) with
+    ``--no-loop`` so it terminates, ``--port 0`` for ephemeral binding, and
+    ``--tick-ms 0`` so no real time is spent."""
+    import argparse
+
+    from mforth import cli_run
+
+    captured: dict = {}
+    real_launch = cli_run.launch_viz
+
+    def _spy_launch(runner, port, host="127.0.0.1"):
+        srv = real_launch(runner, port=port, host=host)
+        captured["server"] = srv
+        captured["stream"] = runner.executor.world.events
+        return srv
+
+    cli_run.launch_viz = _spy_launch
+    try:
+        args = argparse.Namespace(
+            source=str(EXAMPLES_DIR / "blink.fs"),
+            no_loop=True,
+            serve=True,
+            port=0,
+            tick_ms=0,
+        )
+        rc = cli_run._handle_run(args)
+    finally:
+        cli_run.launch_viz = real_launch
+
+    assert rc == 0
+    # The viz was actually booted and wired to the run's EventStream.
+    srv = captured["server"]
+    stream = captured["stream"]
+    assert srv.http_port > 0
+    # Handler tore the server down on exit (subscriber detached).
+    assert srv._subscriber not in stream.subscribers
