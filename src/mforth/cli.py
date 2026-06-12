@@ -195,8 +195,14 @@ def _load_subcommands() -> None:
     #   from mforth import run as _run_mod  # noqa: F401  -- side-effect import
     #   from mforth import compile as _compile_mod  # noqa: F401
     #   ... etc.
+    # Bead .23 (lsp) + .13 (repl) — converged to the explicit-`register()`
+    # pattern by bead mforth-d1o. Calling `register()` (rather than relying
+    # on the import side effect) is what survives a registry clear + replay
+    # when the module is already cached in sys.modules.
     from mforth.lsp import cli_subcommand as _lsp_cli  # noqa: F401  -- side-effect import
+    _lsp_cli.register()
     from mforth.repl import cli_subcommand as _repl_cli  # noqa: F401  -- side-effect import
+    _repl_cli.register()
     # Bead .14 — `run` registers via an explicit callable so a registry
     # clear + replay (test-isolation pattern) re-registers cleanly even
     # when the module is already cached in sys.modules.
