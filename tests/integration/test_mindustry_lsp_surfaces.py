@@ -61,10 +61,30 @@ def test_completion_surfaces_essential_unit_and_block():
 
 
 def test_completion_surfaces_alias_at_ticks():
-    """@ticks (alias of @tick) must surface in completion too."""
-    labels = _completion_labels("")
-    assert "@ticks" in labels
-    assert "@tick" in labels
+    """@ticks (alias of @tick) must surface in completion too.
+
+    The alias is wired into ``standard_dictionary()._entries`` (mforth-eaz)
+    and the completion path iterates ``_entries`` so the alias produces its
+    own item. Both the alias label and the canonical label appear, and the
+    alias detail carries the SAME canonical stack-effect render as every
+    other value-pushing @-identifier — ``( 0 -- 1 )`` (one value out, zero
+    in), per ``_format_stack_effect`` (beads mforth-7ma + mforth-9lx).
+    """
+    items = completions_for(
+        "", uri="file:///t.fs", position=lsp.Position(line=0, character=0)
+    )
+    by_label = {item.label: item for item in items}
+    assert "@ticks" in by_label
+    assert "@tick" in by_label
+    # Canonical stack-effect format — NOT the Forth-traditional `( -- n )`.
+    assert by_label["@ticks"].detail == "( 0 -- 1 )"
+    assert by_label["@tick"].detail == "( 0 -- 1 )"
+    # The alias documentation declares it an alias of the canonical name.
+    alias_doc = by_label["@ticks"].documentation
+    alias_doc_value = (
+        alias_doc.value if hasattr(alias_doc, "value") else str(alias_doc)
+    )
+    assert "alias of @tick" in alias_doc_value
 
 
 # ---------------------------------------------------------------------------
@@ -89,8 +109,25 @@ def test_hover_on_at_copper_shows_doc():
     # Must include the canonical name and stack-effect render.
     assert "@copper" in hov
     # Stack effect rendered with explicit arity numbers per .24's
-    # `_format_stack_effect` (e.g., `( 0 -- 1 )` for `(--n)`-style entries).
-    assert "(" in hov and "--" in hov
+    # `_format_stack_effect`. @copper pushes one value (zero in, one out),
+    # so it renders with the SAME convention as every other value-pusher:
+    # `( 0 -- 1 )`. This is the canonical format — NOT the Forth-traditional
+    # `( -- n )` the bead's original assertion wrongly expected (mforth-7ma).
+    assert "( 0 -- 1 )" in hov
+    assert "( -- " not in hov
+    # Whole render: `<name> <effect>\n<doc>`.
+    assert hov.startswith("@copper ( 0 -- 1 )")
+
+
+def test_hover_on_alias_at_ticks_renders_canonical():
+    """Hovering the @ticks alias resolves to its canonical @tick entry and
+    renders the canonical `( 0 -- 1 )` stack effect (mforth-9lx)."""
+    src = "@ticks"
+    hov = _hover_text(src, 0, 3)
+    assert hov is not None
+    # Alias hover surfaces the canonical entry name + canonical effect.
+    assert hov.startswith("@tick ( 0 -- 1 )")
+    assert "( -- " not in hov
 
 
 def test_hover_on_at_time_shows_doc():
