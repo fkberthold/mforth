@@ -801,9 +801,8 @@ After this tutorial, you can write:
 - `Just Charge` — Part 3 verbatim. Hysteresis on a power network.
 - `ConveyorBlock` — the same pattern as Part 5, with whichever
   resources you actually use.
-- `Sorter Picker` — Part 4's pattern; the simple "drain the
-  bigger pile" version. (The full version needs `null`; see the
-  dialect gaps below.)
+- `Sorter Picker` — Part 4's pattern, in full: drain the bigger
+  pile, or null out the unloader when both supplies are exhausted.
 - `Common config` — drop-in for Part 5's structure.
 - `All In` — Part 5 verbatim.
 
@@ -827,13 +826,9 @@ above are the explicit gap.
 
 ### Dialect gaps surfaced by this tutorial
 
-While writing this tutorial, two dialect rough edges came up. Both
-have v2 follow-up beads:
+While writing this tutorial, one dialect rough edge came up, with a
+v2 follow-up bead:
 
-- **`null` literal for `CONTROL-CONFIG`** — the full Sorter Picker
-  nulls out the unloader's config when supplies are exhausted. v1
-  mforth has no `null`, so Part 4 ports the binary "pick the
-  bigger pile" core without the null-out branch.
 - **Stack-computed flag for `CONTROL-ENABLED`** (`mforth-vdt`) —
   the lifter currently requires a literal `0` or `1` for the
   enabled flag, which forces an `IF/ELSE` in Part 5 and inflates
