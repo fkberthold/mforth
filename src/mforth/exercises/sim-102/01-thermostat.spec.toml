@@ -1,0 +1,21 @@
+# Exercise spec — sim-102 track (bead mforth-roz.6, ch13 control loop).
+#
+# A thermostat decision word. The DRIVER supplies the reading (a
+# temperature) — in a real processor that number would come from a
+# SENSOR, but the decision logic is identical, and a driver-fed value
+# keeps the check deterministic.
+id = "sim-102/01-thermostat"
+prompt = "Define `thermostat` ( temp -- ): print \"COOL\" when temp is above 30, else \"HOLD\"."
+hint = "Compare with `30 >`, then `IF S\" COOL\" PRINT ELSE S\" HOLD\" PRINT THEN`. The `>` consumes temp and the 30, leaving a 0/1 flag for IF."
+
+[[case]]
+driver = "35 thermostat"
+expect = ["COOL"]
+
+[[case]]
+driver = "30 thermostat"
+expect = ["HOLD"]
+
+[[case]]
+driver = "12 thermostat"
+expect = ["HOLD"]

@@ -1,0 +1,28 @@
+# Exercise spec — sim-102 track (bead mforth-roz.6, ch13 control loop).
+#
+# The whole loop body in one word: decide from a reading, ACT on a
+# block (CONTROL-ENABLED a pump switch), and PRINT the decision so the
+# checker has something observable. The `sidecar` key wires the two
+# blocks the word names. The reading still arrives via the driver.
+id = "sim-102/02-pump-controller"
+prompt = "Define `pump-controller` ( level -- ): when level is below 20, turn the `pump` switch on and print \"FILLING\"; otherwise turn it off and print \"FULL\"."
+hint = "`20 <` gives the flag. In the IF arm: `pump 1 CONTROL-ENABLED` then `S\" FILLING\" PRINT`. In the ELSE arm: `pump 0 CONTROL-ENABLED` then `S\" FULL\" PRINT`. CONTROL-ENABLED takes a literal 0 or 1 in v1."
+
+sidecar = """
+[links.pump]
+type = "switch"
+target = "switch1"
+enabled = false
+"""
+
+[[case]]
+driver = "10 pump-controller"
+expect = ["FILLING"]
+
+[[case]]
+driver = "20 pump-controller"
+expect = ["FULL"]
+
+[[case]]
+driver = "85 pump-controller"
+expect = ["FULL"]

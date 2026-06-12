@@ -1,0 +1,20 @@
+# Exercise spec — sim-102 track (bead mforth-roz.6, ch14 capstone, milestone 1).
+#
+# Capstone milestone 1: decide WHICH of two piles is larger. The two
+# levels arrive on the stack (driver-fed); print the verdict. No acting
+# yet — milestone 2 adds the "both empty" arm, milestone 3 acts.
+id = "sim-102/03-bigger-pile"
+prompt = "Define `bigger-pile` ( left right -- ): print \"LEFT\" when left is strictly greater than right, otherwise \"RIGHT\"."
+hint = "`>` consumes both levels (left was underneath, right on top) and leaves a flag. `IF S\" LEFT\" PRINT ELSE S\" RIGHT\" PRINT THEN`."
+
+[[case]]
+driver = "900 100 bigger-pile"
+expect = ["LEFT"]
+
+[[case]]
+driver = "100 900 bigger-pile"
+expect = ["RIGHT"]
+
+[[case]]
+driver = "500 500 bigger-pile"
+expect = ["RIGHT"]
