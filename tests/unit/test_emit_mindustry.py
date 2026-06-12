@@ -480,12 +480,18 @@ def test_wait_in_loop_body_works():
 # ---------------------------------------------------------------------------
 
 
-def test_dot_io_still_deferred():
-    """The IO printing word `.` was deferred by .16 to a later bead;
-    .18 does NOT take it on. The NotImplementedError should still
-    surface."""
-    with pytest.raises(NotImplementedError):
-        compile_to_tuples("42 .")
+def test_dot_io_now_lowers_to_print_slot_form():
+    """The IO printing word `.` was deferred by .16 (raised
+    NotImplementedError); bead mforth-va2 implements it. `42 .` now
+    lowers to a `print s<i-1>` slot-form instruction (NOT an error),
+    producing the same MessagePrintEvent the host REPL's `.` emits.
+    The full lowering shapes are pinned in the `.`-section tests near
+    the end of this module."""
+    instrs = compile_to_tuples("42 .")
+    assert instrs == [
+        (None, "set", ("s0", "42")),
+        (None, "print", ("s0",)),
+    ]
 
 
 def test_print_with_empty_stack_after_lift_is_stack_underflow():
@@ -556,3 +562,55 @@ def test_getlink_stack_effect_one_one():
     prog = parse('0 GETLINK', file="<t>")
     result = stackcheck(prog)
     assert result.program is not None
+
+
+# ---------------------------------------------------------------------------
+# `.` (pop-and-print) — bead mforth-va2
+#
+# Standard Forth `.` is ( n -- ): pop the top of the data stack and print
+# it. The host REPL primitive (`backend/primitives.py::_dot`) funnels the
+# popped value through `world.print(...)`, emitting a MessagePrintEvent —
+# the SAME observable the mlog `print` instruction produces. So `.` lowers
+# to the slot-reference form `print s<i-1>`, mirroring PRINT's slot-form
+# fallback but for a numeric stack value (no string-literal lift). The
+# interpreter's `_format_for_print` already matches the host `.` formatting
+# (integer-valued floats render WITHOUT a trailing `.0`), so no interp
+# change is needed — equivalence holds by construction.
+# ---------------------------------------------------------------------------
+
+
+def test_dot_lowers_to_print_slot_form():
+    """`5 .` — the literal lands in s0, then `.` emits `print s0`
+    (pop-and-print of the numeric stack value). Mirrors `5 WAIT`'s
+    slot-reference shape but with the `print` opcode."""
+    instrs = compile_to_tuples("5 .")
+    assert instrs == [
+        (None, "set", ("s0", "5")),
+        (None, "print", ("s0",)),
+    ]
+
+
+def test_dot_after_arithmetic_prints_result_slot():
+    """`7 3 - .` — the subtraction writes its result into s0, then `.`
+    prints that slot. No literal-lift for `.`: the printed value is
+    always the runtime top-of-stack."""
+    instrs = compile_to_tuples("7 3 - .")
+    assert instrs == [
+        (None, "set", ("s0", "7")),
+        (None, "set", ("s1", "3")),
+        (None, "op", ("sub", "s0", "s0", "s1")),
+        (None, "print", ("s0",)),
+    ]
+
+
+def test_dot_stack_effect_one_zero():
+    """`.` consumes one and produces zero — stackcheck must not raise on
+    the canonical pop-and-print shape, and the emitter must no longer
+    defer it (was NotImplementedError before bead mforth-va2)."""
+    prog = parse("5 .", file="<t>")
+    result = stackcheck(prog)
+    assert result.program is not None
+    sm = allocate_slots(result)
+    # Must not raise NotImplementedError.
+    instrs = emit(result, sm)
+    assert (None, "print", ("s0",)) in instrs
