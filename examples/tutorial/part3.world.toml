@@ -1,0 +1,12 @@
+[links.node1]
+type   = "generic"
+target = "node1"
+
+[links.generator1]
+type   = "switch"
+target = "switch1"
+enabled = false
+
+[clock]
+ipt      = 8
+realtime = false
