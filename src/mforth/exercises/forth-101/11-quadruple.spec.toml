@@ -1,0 +1,17 @@
+# Exercise spec — bundled package data (bead mforth-roz.2).
+# See 01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-101/11-quadruple"
+prompt = "Define `double` ( n -- n*2 ), THEN define `quadruple` ( n -- n*4 ) that calls `double` twice. This is factoring: build the big word out of the small one."
+hint = "First line: `: double ( n -- n*2 ) DUP + ;` (or `2 *`). Second line: `: quadruple ( n -- n*4 ) double double ;` — doubling a double is times four. A word can only call words DEFINED ABOVE it, so `double` must come first."
+
+[[case]]
+driver = "5 quadruple ."
+expect = ["20"]
+
+[[case]]
+driver = "0 quadruple ."
+expect = ["0"]
+
+[[case]]
+driver = "3 double ."
+expect = ["6"]

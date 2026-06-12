@@ -1,0 +1,13 @@
+# Exercise spec — bundled package data (bead mforth-roz.2).
+# See 01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-101/05-triplicate"
+prompt = "Define `triplicate` ( a -- a a a ): leave THREE copies of the top item on the stack."
+hint = "DUP makes one extra copy ( a -- a a ). Run it a SECOND time and the new top gets copied too, giving you three in all."
+
+[[case]]
+driver = "7 triplicate . . ."
+expect = ["7", "7", "7"]
+
+[[case]]
+driver = "-3 triplicate . . ."
+expect = ["-3", "-3", "-3"]

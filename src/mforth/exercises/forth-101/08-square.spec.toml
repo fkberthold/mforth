@@ -1,0 +1,17 @@
+# Exercise spec — bundled package data (bead mforth-roz.2).
+# See 01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-101/08-square"
+prompt = "Define `square` ( n -- n*n ): leave the input multiplied by itself."
+hint = "You need the value twice, so DUP it first, then * multiplies the two copies. Compare with `double`, which used DUP + instead."
+
+[[case]]
+driver = "6 square ."
+expect = ["36"]
+
+[[case]]
+driver = "0 square ."
+expect = ["0"]
+
+[[case]]
+driver = "-4 square ."
+expect = ["16"]
