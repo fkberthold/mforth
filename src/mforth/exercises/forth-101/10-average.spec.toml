@@ -1,0 +1,17 @@
+# Exercise spec — bundled package data (bead mforth-roz.2).
+# See 01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-101/10-average"
+prompt = "Define `average` ( a b -- avg ): the mean of the two inputs. Remember `/` is float division, so an odd total gives a fraction."
+hint = "Add the two numbers ( a b -- a+b ), then divide by 2 ( -- avg ). Push the literal 2 before /."
+
+[[case]]
+driver = "10 20 average ."
+expect = ["15"]
+
+[[case]]
+driver = "3 4 average ."
+expect = ["3.5"]
+
+[[case]]
+driver = "8 8 average ."
+expect = ["8"]

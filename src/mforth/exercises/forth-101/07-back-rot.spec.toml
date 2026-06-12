@@ -1,0 +1,13 @@
+# Exercise spec — bundled package data (bead mforth-roz.2).
+# See 01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-101/07-back-rot"
+prompt = "Define `back-rot` ( a b c -- c a b ): rotate the top three the OTHER way from ROT — the top item sinks to the bottom of the trio."
+hint = "ROT ( a b c -- b c a ) rotates one way. Applying ROT a SECOND time rotates again — two one-third turns make a two-thirds turn, which is the same as one turn backwards."
+
+[[case]]
+driver = "1 2 3 back-rot . . ."
+expect = ["2", "1", "3"]
+
+[[case]]
+driver = "10 20 30 back-rot . . ."
+expect = ["20", "10", "30"]

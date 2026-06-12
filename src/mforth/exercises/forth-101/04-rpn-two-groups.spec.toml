@@ -1,0 +1,9 @@
+# Exercise spec — bundled package data (bead mforth-roz.2).
+# See 01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-101/04-rpn-two-groups"
+prompt = "Compute (10 - 2) * (3 + 1) in postfix and leave it on the stack. Write ONLY the calculation — the checker prints it."
+hint = "Two sub-results, then combine. Build the left group (10 2 -) and the right group (3 1 +); each leaves one value on the stack. With 8 and 4 sitting there, a single * finishes the job."
+
+[[case]]
+driver = "."
+expect = ["32"]

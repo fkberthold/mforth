@@ -1,0 +1,13 @@
+# Exercise spec — bundled package data (bead mforth-roz.2).
+# See 01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-101/06-peek-under"
+prompt = "Define `peek-under` ( a b -- a b a ): copy the SECOND item up onto the top, leaving the original two in place."
+hint = "This is exactly what one word does for you — OVER ( a b -- a b a ) reaches past the top item and copies the one underneath."
+
+[[case]]
+driver = "3 8 peek-under . . ."
+expect = ["3", "8", "3"]
+
+[[case]]
+driver = "100 5 peek-under . . ."
+expect = ["100", "5", "100"]

@@ -1,0 +1,17 @@
+# Exercise spec — bundled package data (bead mforth-roz.2).
+# See 01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-101/09-cube"
+prompt = "Define `cube` ( n -- n*n*n ): leave the input raised to the third power."
+hint = "You need three copies of n in the multiplication. DUP DUP gives you ( n -- n n n ); then * * folds the three together. (Or, if you already wrote `square`, you cannot reuse it here — this file only sees the code you write in it.)"
+
+[[case]]
+driver = "3 cube ."
+expect = ["27"]
+
+[[case]]
+driver = "2 cube ."
+expect = ["8"]
+
+[[case]]
+driver = "-2 cube ."
+expect = ["-8"]
