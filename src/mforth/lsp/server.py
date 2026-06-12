@@ -420,6 +420,19 @@ def _format_hover(term, dictionary, sc_result) -> str | None:
 
 
 def _format_stack_effect(in_arity: int, out_arity: int) -> str:
+    """Render a stack effect in mforth's CANONICAL depth-numbered form.
+
+    The convention is ``( <in_arity> -- <out_arity> )`` -- explicit input
+    and output DEPTHS, not Forth-traditional named placeholders like
+    ``( -- n )``. Every LSP surface that renders a stack effect (built-in
+    hover, alias hover, completion ``detail``, the @-identifier magic vars
+    from mforth-eaz) routes through here, so the format is uniform across
+    the whole surface by construction. A value-pushing @-identifier such as
+    ``@copper`` or ``@tick`` therefore renders ``( 0 -- 1 )`` (zero in, one
+    out). Pinned by tests in
+    ``tests/integration/test_mindustry_lsp_surfaces.py`` (beads mforth-7ma,
+    mforth-9lx).
+    """
     return f"( {in_arity} -- {out_arity} )"
 
 
