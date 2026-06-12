@@ -36,10 +36,16 @@ spec's literal operand forms when the value is known at compile time,
 and falls back to slot references for runtime-valued operands (which
 .19 will substitute against the sidecar where applicable).
 
+Also in (bead mforth-va2): the standard Forth IO word `.` (``( n -- )``)
+— pop the top of the data stack and print it.  Lowers to ``print
+s<i-1>`` (the same slot-form PRINT uses for a runtime value).  The host
+REPL's `.` funnels the popped value through ``world.print`` →
+MessagePrintEvent, so the mlog `print` instruction produces an identical
+event; equivalence holds by construction.  No target buffer / printflush
+sequence is needed — `print` emits the observable directly.
+
 Out (raise `NotImplementedError`):
 
-* The IO printing word `.` (``( n -- )``) — still deferred; the host
-  REPL has it, mlog needs a target buffer + printflush sequence.
 * Loose variable addresses on the stack (e.g. ``foo DUP @``) — v1 is
   cell-free and has no addressable-value semantics.  Error here so the
   user sees a clear message rather than malformed mlog.
@@ -189,15 +195,15 @@ _BINARY_OP_MAP: dict[str, str] = {
 
 # Mindustry primitives still deferred to a later bead.  Bead .18 shipped
 # the five v1 Mindustry primitives (PRINT, PRINTFLUSH, WAIT, SENSOR,
-# GETLINK); only the generic IO printing word `.` remains deferred (the
-# host REPL has it; mlog needs a target buffer + printflush sequence
-# that v1 does not yet codegen).  We enumerate the deferred set so the
-# error message names the user's word accurately and so the catch-all
-# NotImplementedError doesn't swallow typos that should have been
-# resolver errors.
-_DEFERRED_MINDUSTRY: frozenset[str] = frozenset({
-    ".",
-})
+# GETLINK).  Bead mforth-va2 shipped the standard Forth IO word `.`
+# (pop-and-print, ``( n -- )``), which lowers to ``print s<i-1>`` — the
+# same slot-form PRINT uses for a runtime value (the host REPL's `.`
+# funnels the popped value through ``world.print`` → MessagePrintEvent,
+# so the mlog `print` instruction produces an identical event).  The
+# deferred set is now empty but retained as the dispatch hook for any
+# future word the emitter must reject with a word-naming error rather
+# than the catch-all NotImplementedError.
+_DEFERRED_MINDUSTRY: frozenset[str] = frozenset()
 
 
 # Mindustry primitives implemented by bead .18.  See `_emit_mindustry`
@@ -606,13 +612,32 @@ class _Emitter:
             self._guard_no_pending(pending_var, term)
             return None
 
-        # Mindustry primitives still deferred (currently just `.`).
+        # Mindustry primitives still deferred (set is currently empty —
+        # see _DEFERRED_MINDUSTRY).
         if isinstance(entry, BuiltinWord) and entry.name in _DEFERRED_MINDUSTRY:
             self._guard_no_pending(pending_var, term)
             raise NotImplementedError(
                 f"Mindustry primitive '{entry.name}' is not yet supported by "
                 f"the mlog emitter — see bead mforth-10t.18 OUT OF SCOPE"
             )
+
+        # `.` (pop-and-print) — bead mforth-va2. Standard Forth `.`
+        # ( n -- ): pop the top of the data stack and print it. The host
+        # REPL primitive (`backend/primitives.py::_dot`) funnels the
+        # popped value through `world.print` → MessagePrintEvent — the
+        # SAME observable the mlog `print` instruction produces. So `.`
+        # lowers to the slot-reference form `print s<i-1>`, mirroring
+        # PRINT's slot-form fallback but for a numeric stack value (there
+        # is no string-literal lift for `.` — the printed value is always
+        # the runtime top-of-stack). The interpreter's `_format_for_print`
+        # already strips a trailing `.0` from integer-valued floats, the
+        # same rule the host `.` applies, so REPL ↔ mlog equivalence holds
+        # by construction.
+        if isinstance(entry, BuiltinWord) and entry.name == ".":
+            self._guard_no_pending(pending_var, term)
+            rw = self._rw(term, slot_rewrite)
+            self._emit(out, "print", (rw.reads[0],))
+            return None
 
         # Mindustry primitives implemented by .18 — slot-reference path
         # (the literal-lifting fast path is handled by

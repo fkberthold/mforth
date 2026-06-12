@@ -473,8 +473,9 @@ def test_mindustry_primitives_now_supported_smoke_check():
     `print` instruction; full contract coverage lives in
     `test_emit_mindustry.py`.
 
-    The IO printing word `.` remains deferred — see
-    `test_dot_io_still_deferred` in `test_emit_mindustry.py`."""
+    The IO printing word `.` is also supported as of bead mforth-va2
+    (lowers to `print s<i-1>`) — see the `.`-section tests in
+    `test_emit_mindustry.py`."""
     instrs = compile_to_tuples("42 PRINT")
     assert any(opcode == "print" for (_, opcode, _) in instrs if opcode is not None)
 
