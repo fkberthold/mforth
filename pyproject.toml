@@ -68,6 +68,15 @@ mforth = "mforth.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mforth"]
+# Tutorial exercise specs (bead mforth-roz.1) ship as PACKAGE DATA so the
+# `mforth check` subcommand resolves them via importlib.resources from any
+# cwd. hatchling already ships non-.py files inside a package dir, but the
+# explicit `artifacts` glob guards against a future build-config / scoping
+# change silently dropping the .spec.toml / .solution.fs from the wheel.
+artifacts = [
+    "src/mforth/exercises/**/*.spec.toml",
+    "src/mforth/exercises/**/*.solution.fs",
+]
 
 [tool.hatch.build.targets.sdist]
 # Default hatchling sdist scope is "everything not in .gitignore", which sucks

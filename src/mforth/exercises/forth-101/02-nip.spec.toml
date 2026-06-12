@@ -1,0 +1,13 @@
+# Exercise spec — bundled package data (bead mforth-roz.1).
+# See 01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-101/02-nip"
+prompt = "Define `nip` ( a b -- b ): drop the second item, keep the top."
+hint = "SWAP brings b under-then-over a, then DROP removes a — leaving b on top."
+
+[[case]]
+driver = "1 2 nip ."
+expect = ["2"]
+
+[[case]]
+driver = "10 99 nip ."
+expect = ["99"]
