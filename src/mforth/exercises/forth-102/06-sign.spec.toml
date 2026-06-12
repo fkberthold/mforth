@@ -1,0 +1,17 @@
+# Exercise spec — bundled package data (bead mforth-roz.1).
+# See forth-101/01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-102/06-sign"
+prompt = "Define `sign` ( n -- s ): leave 1 if n is positive, -1 if negative, 0 if zero. This needs a three-way decision — an IF nested inside the ELSE of another IF."
+hint = "Outer test: `DUP 0 >`. If true, `DROP 1`. In the ELSE, test again with `0 <`: if true leave -1, else leave 0. Each branch must leave exactly one value so the depths match."
+
+[[case]]
+driver = "7 sign ."
+expect = ["1"]
+
+[[case]]
+driver = "-4 sign ."
+expect = ["-1"]
+
+[[case]]
+driver = "0 sign ."
+expect = ["0"]

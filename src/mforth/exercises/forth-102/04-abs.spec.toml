@@ -1,0 +1,21 @@
+# Exercise spec — bundled package data (bead mforth-roz.1).
+# See forth-101/01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-102/04-abs"
+prompt = "Define `abs` ( n -- |n| ): leave the absolute value — n unchanged if it is zero or positive, negated if it is negative."
+hint = "`DUP 0 <` tests a copy of n without consuming it, leaving ( n flag ). Inside `IF ... THEN`, negate by subtracting from zero: `0 SWAP -` turns n into 0 - n. The THEN branch must leave exactly one value, same as the no-op path."
+
+[[case]]
+driver = "-3 abs ."
+expect = ["3"]
+
+[[case]]
+driver = "4 abs ."
+expect = ["4"]
+
+[[case]]
+driver = "0 abs ."
+expect = ["0"]
+
+[[case]]
+driver = "-100 abs ."
+expect = ["100"]

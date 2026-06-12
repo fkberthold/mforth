@@ -1,0 +1,25 @@
+# Exercise spec — bundled package data (bead mforth-roz.1).
+# See forth-101/01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-102/03-between"
+prompt = "Define `between?` ( lo hi n -- flag ): leave 1 if lo <= n <= hi, else 0. Note the argument order — the bounds go on first, the value to test goes on top."
+hint = "It is two comparisons combined with AND: `n >= lo` and `n <= hi`. `OVER` copies a buried value to the top so you can compare without losing it; `ROT ROT` (rotate twice) buries the first flag while you compute the second."
+
+[[case]]
+driver = "1 10 5 between? ."
+expect = ["1"]
+
+[[case]]
+driver = "1 10 0 between? ."
+expect = ["0"]
+
+[[case]]
+driver = "1 10 99 between? ."
+expect = ["0"]
+
+[[case]]
+driver = "1 10 1 between? ."
+expect = ["1"]
+
+[[case]]
+driver = "1 10 10 between? ."
+expect = ["1"]

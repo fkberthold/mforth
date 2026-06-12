@@ -1,0 +1,21 @@
+# Exercise spec — bundled package data (bead mforth-roz.1).
+# See forth-101/01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-102/01-even"
+prompt = "Define `even?` ( n -- flag ): leave 1 if n is even, 0 if odd."
+hint = "A number is even when dividing by 2 leaves no remainder. `2 MOD` gives the remainder; compare it to 0 with `=`."
+
+[[case]]
+driver = "4 even? ."
+expect = ["1"]
+
+[[case]]
+driver = "7 even? ."
+expect = ["0"]
+
+[[case]]
+driver = "0 even? ."
+expect = ["1"]
+
+[[case]]
+driver = "-6 even? ."
+expect = ["1"]

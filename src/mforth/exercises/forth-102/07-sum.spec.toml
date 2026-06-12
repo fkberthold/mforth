@@ -1,0 +1,21 @@
+# Exercise spec — bundled package data (bead mforth-roz.1).
+# See forth-101/01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-102/07-sum"
+prompt = "Define `sum` ( n -- total ): leave the sum 1 + 2 + ... + n. (For n = 0 the sum is 0.)"
+hint = "Seed an accumulator: `0 SWAP` gives ( 0 n ). A `DO` loop runs from a start up to (but NOT including) a limit, so loop `1 + 1 DO ... LOOP` to cover 1..n. Inside the body, `I` pushes the current index; add it with `+`."
+
+[[case]]
+driver = "5 sum ."
+expect = ["15"]
+
+[[case]]
+driver = "1 sum ."
+expect = ["1"]
+
+[[case]]
+driver = "10 sum ."
+expect = ["55"]
+
+[[case]]
+driver = "0 sum ."
+expect = ["0"]

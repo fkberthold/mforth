@@ -1,0 +1,17 @@
+# Exercise spec — bundled package data (bead mforth-roz.1).
+# See forth-101/01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-102/02-odd"
+prompt = "Define `odd?` ( n -- flag ): leave 1 if n is odd, 0 if even. Build it from the even test you already know — odd is just `even?` negated."
+hint = "`2 MOD 0 =` is the even test. `NOT` flips a 0/1 flag: 0 becomes 1 and any truthy value becomes 0. So `even?`-then-`NOT` is `odd?`. (Or compare the remainder to 0 with `<>`.)"
+
+[[case]]
+driver = "3 odd? ."
+expect = ["1"]
+
+[[case]]
+driver = "8 odd? ."
+expect = ["0"]
+
+[[case]]
+driver = "0 odd? ."
+expect = ["0"]

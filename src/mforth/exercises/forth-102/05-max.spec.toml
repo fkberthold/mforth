@@ -1,0 +1,21 @@
+# Exercise spec — bundled package data (bead mforth-roz.1).
+# See forth-101/01-double.spec.toml / src/mforth/exercises/__init__.py for the schema.
+id = "forth-102/05-max"
+prompt = "Define `max` ( a b -- max ): leave the larger of the two values (either, if equal)."
+hint = "`OVER OVER` copies both values to the top so you can compare them without consuming the originals — that leaves ( a b a b ); `<` turns the top pair into a flag. `IF SWAP THEN` puts the larger one on top, then `DROP` discards the loser."
+
+[[case]]
+driver = "3 9 max ."
+expect = ["9"]
+
+[[case]]
+driver = "9 3 max ."
+expect = ["9"]
+
+[[case]]
+driver = "5 5 max ."
+expect = ["5"]
+
+[[case]]
+driver = "-2 -8 max ."
+expect = ["-2"]
