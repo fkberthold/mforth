@@ -1,0 +1,9 @@
+set s0 n
+set s1 1
+op add s0 s0 s1
+set s1 s0
+set n s1
+print s0
+printflush message1
+set s0 1
+wait s0

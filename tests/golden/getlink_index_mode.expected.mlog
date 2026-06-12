@@ -1,0 +1,3 @@
+getlink display 0
+print display
+printflush display

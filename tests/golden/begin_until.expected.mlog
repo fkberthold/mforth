@@ -1,0 +1,7 @@
+set s0 5
+set s1 1
+op sub s0 s0 s1
+set s1 s0
+set s2 0
+op equal s1 s1 s2
+jump 1 equal s0 0
