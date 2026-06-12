@@ -1,0 +1,23 @@
+# Exercise spec — bundled package data (track sim-101, bead mforth-roz.5).
+#
+# Part II, chapter 10 (the simulator). First on-screen output: queue a
+# string into the print buffer with PRINT, then flush it to a message
+# block with PRINTFLUSH. The `sidecar` key below is the inline
+# .world.toml the checker writes beside the exercise so `display`
+# resolves to a message block.
+#
+# NOTE: PRINTFLUSH does not itself add to the comparison stream — only
+# PRINT (and `.`) emit the MessagePrintEvent the checker reads. So the
+# checkable evidence is the string the learner PRINTs.
+id = "sim-101/01-greet"
+prompt = "Define `greet` ( -- ): PRINT the string  online  then flush it to the message block `display`."
+hint = "S\" online\" PRINT pushes-then-queues the text; `display PRINTFLUSH` sends the buffer to the block. The sidecar already binds `display`."
+sidecar = """
+[links.display]
+type   = "message"
+target = "message1"
+"""
+
+[[case]]
+driver = "greet"
+expect = ["online"]

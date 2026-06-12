@@ -1,0 +1,25 @@
+# Exercise spec — bundled package data (track sim-101, bead mforth-roz.5).
+#
+# Part II, chapter 12 (controlling). The whole sense -> decide -> act
+# shape in one word. Sense whether the vault is empty; PRINT the decision
+# flag (so the checker can see it); then ACT — turn the `miner` switch ON
+# when empty (so it refills), OFF otherwise. The DUP keeps a copy of the
+# flag for printing while the original drives the IF. Both arms call
+# CONTROL-ENABLED with a LITERAL 1/0 — v1's lifter requires that.
+id = "sim-101/06-act"
+prompt = "Define `restock` ( -- ): SENSOR `vault1`'s `@totalItems`; if it is empty (= 0) PRINT 1 and `miner 1 CONTROL-ENABLED`, else PRINT 0 and `miner 0 CONTROL-ENABLED`."
+hint = "Compute the empty flag (`vault1 @totalItems SENSOR 0 =`), `DUP .` to print a copy, then `IF miner 1 CONTROL-ENABLED ELSE miner 0 CONTROL-ENABLED THEN` to act."
+sidecar = """
+[links.vault1]
+type   = "core"
+target = "vault1"
+
+[links.miner]
+type   = "switch"
+target = "switch1"
+enabled = false
+"""
+
+[[case]]
+driver = "restock"
+expect = ["1"]

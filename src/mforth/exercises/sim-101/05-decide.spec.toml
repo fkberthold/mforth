@@ -1,0 +1,20 @@
+# Exercise spec — bundled package data (track sim-101, bead mforth-roz.5).
+#
+# Part II, chapter 12 (controlling). The decision half of a controller:
+# sense the vault, decide whether the miner should run. We want the miner
+# ON while the vault is NOT full — here, while it has room. Because the
+# checker compares PRINTED output (CONTROL-ENABLED emits a control event,
+# not a print), the learner returns the on/off flag and the driver prints
+# it. Chapter 13 wires the same flag straight into CONTROL-ENABLED.
+id = "sim-101/05-decide"
+prompt = "Define `should-run?` ( -- flag ): leave 1 when `vault1` has room (its `@totalItems` is below its `@itemCapacity`), else 0 — the flag a miner switch should be set to."
+hint = "Sense items, sense capacity, then `<`. Stack: ( items capacity -- flag ). An empty vault (0 < 0 is false) means  no room sensed yet , so the baseline is 0."
+sidecar = """
+[links.vault1]
+type   = "core"
+target = "vault1"
+"""
+
+[[case]]
+driver = "should-run? ."
+expect = ["0"]
