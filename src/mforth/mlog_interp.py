@@ -595,7 +595,19 @@ def _tokenise_line(line: str) -> list[str]:
 
 def _h_set(interp: MlogInterpreter, operands: list) -> bool:
     name, src = operands[0], operands[1]
-    interp._write(name, interp._read(src))
+    value = interp._read(src)
+    interp._write(name, value)
+    # bead mforth-10t.39: `set @counter <addr>` is mlog's computed goto
+    # (CLAUDE.md: @counter is writable). When the destination is
+    # @counter, the write IS the jump — the PC must NOT auto-advance,
+    # otherwise the computed target is silently incremented by one. This
+    # is the interpreter lever the subroutine-emission pass relies on
+    # (caller sets @counter to the callee entry; callee ends with
+    # `set @counter <return-addr>`). The written value is coerced to an
+    # int line number, matching the `jump` handler's target handling.
+    if name == "@counter":
+        interp.variables["@counter"] = int(value)
+        return False
     return True
 
 
