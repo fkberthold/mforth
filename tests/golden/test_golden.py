@@ -60,8 +60,10 @@ from typing import Mapping
 import pytest
 
 from mforth.backend.mlog import MlogInstr, allocate_slots, emit
-from mforth.backend.sidecar import load_sidecar
-from mforth.parse import parse
+from mforth.backend.mlog.finalize import finalize
+from mforth.backend.sidecar import WorldConfig, load_sidecar
+from mforth.dictionary import UserVariable, resolve, standard_dictionary
+from mforth.parse import SrcLoc, parse
 from mforth.stackcheck import stackcheck
 
 
@@ -77,16 +79,20 @@ GOLDEN_DIR = Path(__file__).parent
 #
 # Keep this list short and specific — every entry is a known-incomplete
 # coverage gap, and the xfail message is the bead that closes the gap.
+#
+# As of mforth-dsq the .19 finalize writer is wired into this harness
+# (see ``_compile_to_mlog`` below) and the header line it emits is
+# stripped before comparison, so the four fixtures that only needed the
+# final pass — if_then, begin_until, counter, getlink_index_mode — now
+# assert real golden equality.  blink remains xfail: its source uses the
+# ``0=`` word, which the v1 dictionary does not yet define (surfaced by
+# the .19 ship report; tracked under mforth-10t.18's primitive set).
 XFAIL_FIXTURES: Mapping[str, str] = {
-    "blink": "blocks on mforth-10t.18 (mlog Mindustry primitives) + "
-             "mforth-10t.19 (final pass: label resolution + sidecar "
-             "substitution)",
-    "counter": "blocks on mforth-10t.18 + mforth-10t.19",
-    "if_then": "blocks on mforth-10t.17 (mlog control flow codegen)",
-    "begin_until": "blocks on mforth-10t.17",
-    "getlink_index_mode": "blocks on mforth-10t.18 + mforth-10t.19 "
-                          "(needs Mindustry primitive emit + sidecar "
-                          "index-mode getlink prologue)",
+    "blink": "blocks on the `0=` word, undefined in the v1 dictionary "
+             "(UnresolvedWordError at blink.fs:14); the rest of the v1 "
+             "demo path — mforth-10t.18 primitives + mforth-10t.19 final "
+             "pass — has shipped, so flip this entry once `0=` lands and "
+             "run `pytest tests/golden --update-golden`",
 }
 
 
@@ -114,6 +120,12 @@ def _serialize(instrs: list[MlogInstr]) -> str:
     See module docstring for the format contract.  One label-line + one
     instruction-line per tuple as applicable; single-space-joined
     operands; trailing newline at end of file.
+
+    This is the *body-only* serializer — it does NOT run the .19 final
+    pass (sidecar substitution, getlink prologue, label resolution) and
+    it emits no header comment.  The parametrized golden test uses
+    :func:`_compile_to_mlog` instead; ``_serialize`` survives for the
+    serializer-contract unit tests in ``test_harness.py``.
     """
     lines: list[str] = []
     for label, opcode, operands in instrs:
@@ -121,6 +133,73 @@ def _serialize(instrs: list[MlogInstr]) -> str:
             lines.append(f"{label}:")
         lines.append(" ".join((opcode, *operands)))
     return "\n".join(lines) + "\n"
+
+
+def _strip_header(mlog_text: str) -> str:
+    """Drop leading ``#``-comment header line(s) from finalized mlog text.
+
+    The .19 writer (``finalize.write_mlog``) prefixes the body with a
+    metadata header line::
+
+        # mforth output — N instructions; SOURCE=...; SIDECAR=...
+
+    That header carries the instruction count + source/sidecar paths —
+    metadata, not body.  The golden ``.expected.mlog`` files pin the
+    *body* (the paste-ready instruction stream), so the harness strips
+    every leading line whose first non-whitespace character is ``#``
+    before comparing.  Only *leading* comment lines are removed; a ``#``
+    that appears after the first real instruction (e.g. an
+    ``--emit-comments`` inline note) is left untouched.
+
+    An empty program finalizes to header-only, so stripping leaves no
+    body.  We normalize that to a lone ``"\n"`` — the same POSIX-clean
+    empty-program form ``_serialize([])`` yields — so the body-only
+    golden contract is uniform across both serializers.
+    """
+    lines = mlog_text.splitlines(keepends=True)
+    idx = 0
+    while idx < len(lines) and lines[idx].lstrip().startswith("#"):
+        idx += 1
+    body = "".join(lines[idx:])
+    return body if body else "\n"
+
+
+def _compile_to_mlog(
+    src: str, *, file: str, world_config: WorldConfig,
+    source_path: Path, sidecar_path: Path,
+) -> str:
+    """Run the full production compile pipeline and return body mlog text.
+
+    Mirrors ``mforth.cli_compile._handle_compile`` (bead mforth-10t.19):
+    pre-seed the dictionary with the sidecar's link names, then
+    ``parse → resolve → stackcheck → allocate_slots → emit → finalize``.
+    The finalized text's metadata header is stripped (see
+    :func:`_strip_header`) so the result is the paste-ready body that the
+    ``.expected.mlog`` goldens pin.
+    """
+    # Pre-seed link names as UserVariable dictionary entries so bare-link
+    # references (e.g. `display PRINTFLUSH`) resolve — the same idiom the
+    # host REPL's Runner.from_path and the compile CLI both use.
+    dictionary = standard_dictionary()
+    seed_loc = SrcLoc(str(sidecar_path), 1, 1)
+    for spec in world_config.links:
+        if spec.mforth_name not in dictionary:
+            dictionary.add_variable(
+                UserVariable(name=spec.mforth_name, src_loc=seed_loc)
+            )
+
+    program = parse(src, file=file)
+    dictionary = resolve(program, dictionary=dictionary)
+    result = stackcheck(program, dictionary=dictionary)
+    slots = allocate_slots(result)
+    instrs = emit(result, slots)
+    text = finalize(
+        instrs,
+        world_config=world_config,
+        source_path=source_path,
+        sidecar_path=sidecar_path,
+    )
+    return _strip_header(text)
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +225,7 @@ def test_golden(fs_path: Path, request: pytest.FixtureRequest) -> None:
         f"missing sidecar: {sidecar_path.name} "
         f"(every <name>.fs needs a sibling <name>.world.toml)"
     )
-    load_sidecar(sidecar_path)  # raises SidecarError on malformed input
+    world_config = load_sidecar(sidecar_path)  # raises SidecarError if bad
 
     # xfail FIRST, before compiling.  Fixtures listed in XFAIL_FIXTURES
     # are known to exercise codegen paths that don't exist yet
@@ -159,7 +238,13 @@ def test_golden(fs_path: Path, request: pytest.FixtureRequest) -> None:
         pytest.xfail(reason=XFAIL_FIXTURES[stem])
 
     src = fs_path.read_text()
-    actual = _serialize(_compile_to_tuples(src, file=fs_path.name))
+    actual = _compile_to_mlog(
+        src,
+        file=fs_path.name,
+        world_config=world_config,
+        source_path=fs_path,
+        sidecar_path=sidecar_path,
+    )
 
     update_golden = request.config.getoption("--update-golden")
 
