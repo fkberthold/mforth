@@ -69,6 +69,23 @@ nav:
   - Tutorials:
       - tutorials/index.md
       - Getting started: tutorials/getting-started.md
+      - Learn Forth:
+          - tutorials/learn-forth/index.md
+          - 1. The stack & postfix: tutorials/learn-forth/01-stack.md
+          - 2. Juggling the stack: tutorials/learn-forth/02-juggling.md
+          - 3. Defining words: tutorials/learn-forth/03-defining.md
+          - 4. Arithmetic & truth: tutorials/learn-forth/04-arithmetic.md
+          - 5. Branching: tutorials/learn-forth/05-branching.md
+          - 6. Looping: tutorials/learn-forth/06-looping.md
+          - 7. State & variables: tutorials/learn-forth/07-state.md
+          - 8. Output: tutorials/learn-forth/08-output.md
+          - 9. Factoring: tutorials/learn-forth/09-factoring.md
+          - 10. Meet the simulator: tutorials/learn-forth/10-simulator.md
+          - 11. Reading the world: tutorials/learn-forth/11-sensing.md
+          - 12. Acting on the world: tutorials/learn-forth/12-controlling.md
+          - 13. A control loop: tutorials/learn-forth/13-control-loop.md
+          - 14. Capstone - the sorter: tutorials/learn-forth/14-capstone.md
+          - 15. Where next: tutorials/learn-forth/15-where-next.md
       - Writing mforth for Mindustry: tutorials/writing-mforth-for-mindustry.md
   - How-to:
       - how-to/index.md

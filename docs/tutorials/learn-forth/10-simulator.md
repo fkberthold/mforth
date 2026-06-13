@@ -55,7 +55,7 @@ game it shows up as `message1`."* The left side of `[links.display]` —
 is the in-game label. You bind by name, so re-linking blocks in a
 different order never breaks your program. (There is a second, fragile
 addressing mode by slot `index`; tutorials never use it. The
-[sidecar schema reference](../reference/sidecar-schema.md) covers both.)
+[sidecar schema reference](../../reference/sidecar-schema.md) covers both.)
 
 Why a side file instead of writing `message1` directly in your `.fs`? So
 the source stays portable: the same program drops onto any processor,

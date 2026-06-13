@@ -36,7 +36,7 @@ show up here:
 - **Stat names** — `@totalItems`, `@itemCapacity`, `@health`,
   `@progress`, `@efficiency`, … — ask about the block itself.
 
-The [dictionary reference](../reference/dictionary.md) lists every
+The [dictionary reference](../../reference/dictionary.md) lists every
 sensor property; you don't memorize them, you look them up.
 
 ## What an empty block reads

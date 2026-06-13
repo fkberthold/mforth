@@ -66,7 +66,7 @@ exposes is a `CONTROL-` word with a fixed stack effect:
 You won't need the turret words in this series; they're here so you know
 the shape — every one of them ends a sense → decide → act chain the same
 way `CONTROL-ENABLED` does. The
-[dictionary reference](../reference/dictionary.md) has the full list.
+[dictionary reference](../../reference/dictionary.md) has the full list.
 
 ## Sense → decide → act, in one word
 
