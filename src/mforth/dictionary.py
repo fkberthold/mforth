@@ -565,6 +565,40 @@ _MINDUSTRY_IDENTIFIERS: list[BuiltinWord] = (
 )
 
 
+# The `@`-names a `SENSOR` instruction can legitimately read off a block:
+# the dedicated sensor properties (@totalItems, @itemCapacity, …) plus the
+# item and liquid content handles (@copper, @water, …), which sense as
+# "how much of this content does the block hold?". Unit and block content
+# handles are NOT sensor-readable in this sense (they name content, they
+# are not per-block stocked quantities), and magic vars are processor
+# globals, not block properties — so neither family is included here.
+#
+# Bead mforth-0pg uses this set to validate the `.world.toml` sidecar's
+# per-link `sensors = { @prop = value }` seeding table: a key outside this
+# set is a clear authoring error (e.g. a typo'd or non-sensor @-name).
+_SENSOR_READABLE_TAGS = {
+    "mindustry-sensor-prop",
+    "mindustry-item",
+    "mindustry-liquid",
+}
+
+
+def sensor_readable_names() -> frozenset[str]:
+    """Return the frozenset of `@`-names a `SENSOR` can read off a block.
+
+    The union of the dedicated sensor properties and the item/liquid
+    content handles (which sense as per-block stocked quantities). This
+    is the source of truth the sidecar loader validates seeded sensor
+    values against (bead mforth-0pg) — keeping the allow-list anchored to
+    the dictionary so the two cannot drift.
+    """
+    return frozenset(
+        entry.name
+        for entry in _MINDUSTRY_IDENTIFIERS
+        if entry.tag in _SENSOR_READABLE_TAGS
+    )
+
+
 # Aliases: alias_name → canonical_name (both lowercased; canonical entry
 # is looked up after the main registration loop and the alias key is
 # pointed at the same object).
@@ -722,5 +756,6 @@ __all__ = [
     "UnresolvedWordError",
     "UserVariable",
     "resolve",
+    "sensor_readable_names",
     "standard_dictionary",
 ]

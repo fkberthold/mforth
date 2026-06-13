@@ -161,7 +161,21 @@ def build_world(config: WorldConfig) -> MockWorld:
             raise RunnerError(
                 f"unknown link type {spec.type!r} for link {spec.mforth_name!r}"
             )
-        world.add_link(factory(spec))
+        block = factory(spec)
+        # bead mforth-0pg: seed declared sensor/property readings into the
+        # block's state. `world.sensor` reads `block.state[<@prop>]`, and
+        # the in-repo mlog interpreter's `sensor` handler forwards the
+        # same bare `@prop` token to `world.sensor` — so seeding here is
+        # the SINGLE point that makes the host `SENSOR` primitive AND the
+        # compiled `sensor` instruction return the same value. This is the
+        # load-bearing equivalence point: `build_world` is the one world
+        # factory both the host runner and the equivalence harness call,
+        # so neither backend can drift. Sidecar validation already
+        # guarantees keys are SENSOR-readable `@`-names and values are
+        # floats, so this is a straight copy.
+        for prop, value in spec.sensors.items():
+            block.state[prop] = value
+        world.add_link(block)
     world.config["ipt"] = config.clock.ipt
     world.config["realtime"] = config.clock.realtime
     return world

@@ -1,0 +1,21 @@
+# Sidecar-seeded SENSOR equivalence fixture (bead mforth-0pg).
+#
+# vault1 is a core block whose @totalItems and @itemCapacity are SEEDED
+# here so `SENSOR` reads real data (not the empty-block 0.0 default).
+# build_world copies these into Block.state; both the host SENSOR
+# primitive and the compiled `sensor` instruction read them from the
+# same seeded MockWorld, which is what makes the equivalence property
+# hold for a sense-and-decide program.
+
+[links.vault1]
+type    = "core"
+target  = "vault1"
+sensors = { "@totalItems" = 80, "@itemCapacity" = 100 }
+
+[links.display]
+type   = "message"
+target = "message1"
+
+[clock]
+ipt      = 8
+realtime = false

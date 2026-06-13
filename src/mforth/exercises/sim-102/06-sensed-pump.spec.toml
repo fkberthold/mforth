@@ -1,0 +1,29 @@
+# Exercise spec — sim-102 track (bead mforth-0pg, sensor-seeded capstone).
+#
+# Closes the loop the rest of sim-102 left open: the earlier pump /
+# thermostat exercises take their reading from the DRIVER (a literal on
+# the stack) because the simulator had no way to seed a SENSOR. With
+# sidecar sensor-seeding (bead mforth-0pg) the reading now comes from the
+# world itself. `tank1` is SEEDED with `@totalLiquids = 30` in a
+# `@liquidCapacity = 100` tank, so `sense-pump` SENSORs both, decides the
+# tank is below 40% full, prints "FILLING", and runs the pump — a full
+# sense -> decide -> act word driven entirely by world data the learner
+# never types. Bump the seed past 40 and the decision flips to "FULL".
+id = "sim-102/06-sensed-pump"
+prompt = "Define `sense-pump` ( -- ): SENSOR `tank1`'s `@totalLiquids` and `@liquidCapacity`; when the liquid is below 40% of capacity (liquid*100 < capacity*40) print \"FILLING\" and `pump 1 CONTROL-ENABLED`, else print \"FULL\" and `pump 0 CONTROL-ENABLED`."
+hint = "Sense the liquid, `100 *`; sense the capacity, `40 *`; compare with `<` for  below 40%? . Then `IF pump 1 CONTROL-ENABLED S\" FILLING\" PRINT ELSE pump 0 CONTROL-ENABLED S\" FULL\" PRINT THEN`. The sidecar seeded 30 in a 100-tank, so `3000 < 4000` is true."
+sidecar = """
+[links.tank1]
+type    = "core"
+target  = "tank1"
+sensors = { "@totalLiquids" = 30, "@liquidCapacity" = 100 }
+
+[links.pump]
+type    = "switch"
+target  = "switch1"
+enabled = false
+"""
+
+[[case]]
+driver = "sense-pump"
+expect = ["FILLING"]

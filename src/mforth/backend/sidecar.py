@@ -12,6 +12,8 @@ index  = N                  # mode B (opt-in, fragile to re-link order)
 # type-specific (optional):
 size    = N                 # memory-cell capacity
 enabled = bool              # switch initial state
+# initial sensor readings (optional, bead mforth-0pg):
+sensors = { "@copper" = 240, "@totalItems" = 80 }
 
 [clock]
 ipt      = 2 | 8 | 25       # micro | logic | hyper processor
@@ -64,6 +66,15 @@ class LinkSpec:
     index: Optional[int] = None
     size: Optional[int] = None
     enabled: Optional[bool] = None
+    # bead mforth-0pg: initial sensor/property readings for this block.
+    # Maps a SENSOR-readable `@`-property name (e.g. ``@copper``,
+    # ``@totalItems``) to the float value the host MockWorld AND the
+    # in-repo mlog interpreter should both return for
+    # ``<block> @prop SENSOR``. Empty when the sidecar omits the optional
+    # ``sensors`` inline table. Stored as a plain dict (the dataclass is
+    # frozen so the *reference* can't be reassigned; callers must not
+    # mutate the dict in place).
+    sensors: dict = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -177,6 +188,8 @@ def _parse_one_link(name: str, spec: dict, source: str) -> LinkSpec:
             f"[links.{name}].enabled must be a boolean", source=source
         )
 
+    sensors = _parse_sensors(name, spec.get("sensors"), source)
+
     return LinkSpec(
         mforth_name=name,
         type=link_type,
@@ -184,7 +197,55 @@ def _parse_one_link(name: str, spec: dict, source: str) -> LinkSpec:
         index=index,
         size=size,
         enabled=enabled,
+        sensors=sensors,
     )
+
+
+def _parse_sensors(name: str, raw, source: str) -> dict:
+    """Validate the optional per-link ``sensors`` inline table (bead
+    mforth-0pg) and return a ``{@prop: float}`` dict.
+
+    Each key must be a SENSOR-readable ``@``-property name (validated
+    against :func:`mforth.dictionary.sensor_readable_names`); each value
+    must be a finite number (``bool`` rejected — TOML ``true``/``false``
+    are not sensor readings). Returns ``{}`` when the table is absent.
+    """
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise SidecarError(
+            f"[links.{name}].sensors must be a table of "
+            f"`@property = value` entries",
+            source=source,
+        )
+    # Local import keeps the dictionary (a heavier module) off the
+    # import path for callers that only parse link topology.
+    from mforth.dictionary import sensor_readable_names
+
+    valid = sensor_readable_names()
+    out: dict = {}
+    for prop, value in raw.items():
+        if not (isinstance(prop, str) and prop.startswith("@")):
+            raise SidecarError(
+                f"[links.{name}].sensors key {prop!r} must be an "
+                f"`@`-prefixed property name (e.g. '@copper', '@totalItems')",
+                source=source,
+            )
+        if prop not in valid:
+            raise SidecarError(
+                f"[links.{name}].sensors key {prop!r} is not a known "
+                f"SENSOR-readable property — see the dictionary reference "
+                f"for the readable `@`-names (items, liquids, sensor stats)",
+                source=source,
+            )
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise SidecarError(
+                f"[links.{name}].sensors[{prop!r}] must be a number "
+                f"(got {value!r})",
+                source=source,
+            )
+        out[prop] = float(value)
+    return out
 
 
 # ---------------------------------------------------------------------------
