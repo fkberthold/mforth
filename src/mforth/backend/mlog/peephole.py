@@ -180,14 +180,34 @@ def _is_block_leader(instr: tuple) -> bool:
     return label is not None
 
 
+def _is_computed_jump(opcode: str, operands: Sequence[str]) -> bool:
+    """True iff the instruction WRITES ``@counter`` — a computed jump
+    (bead mforth-i8h). ``-Osize`` subroutine streams use mlog's writable
+    ``@counter`` for calls/returns:
+
+      * ``set @counter <entry-or-ret>`` — call / computed return.
+      * ``op <f> @counter ...`` — jump-table dispatch.
+
+    Control may LEAVE the block here exactly as it does after a ``jump``,
+    so a block boundary must follow. Treating the computed jump as block-
+    terminating keeps the intra-block liveness scan from assuming a slot
+    value flows across the computed transfer (which would be unsound)."""
+    if opcode == "set" and len(operands) >= 1 and operands[0] == "@counter":
+        return True
+    if opcode == "op" and len(operands) >= 2 and operands[1] == "@counter":
+        return True
+    return False
+
+
 def _segment_blocks(instrs: Sequence[tuple]) -> list[tuple[int, int]]:
     """Partition ``instrs`` into ``[start, end)`` index ranges.
 
     A new block starts at index 0, at any labelled instruction (jump
-    target), and immediately after any ``jump`` (control may leave).
-    Sentinel tuples ``(label, None, None)`` are kept inside the stream
-    and start a block (they mark a jump target's position) but are never
-    themselves rewritten.
+    target), and immediately after any ``jump`` OR any computed jump
+    (``set @counter`` / ``op <f> @counter`` — control may leave; bead
+    mforth-i8h). Sentinel tuples ``(label, None, None)`` are kept inside
+    the stream and start a block (they mark a jump target's position) but
+    are never themselves rewritten.
     """
     if not instrs:
         return []
@@ -195,8 +215,10 @@ def _segment_blocks(instrs: Sequence[tuple]) -> list[tuple[int, int]]:
     for i, instr in enumerate(instrs):
         if i > 0 and _is_block_leader(instr):
             boundaries.add(i)
-        _label, opcode, _operands = instr
-        if opcode == "jump":
+        _label, opcode, operands = instr
+        if opcode == "jump" or (
+            opcode is not None and _is_computed_jump(opcode, operands)
+        ):
             boundaries.add(i + 1)
     ordered = sorted(b for b in boundaries if 0 <= b <= len(instrs))
     return [

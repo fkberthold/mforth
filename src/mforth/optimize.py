@@ -258,16 +258,27 @@ def optimize_and_emit(
     if level >= OptLevel.OSIZE:
         # Subroutine emission is the size fallback. It re-fuses,
         # re-stackchecks, and re-allocates internally, so feed it the
-        # optimized StackcheckResult. The post-emit slot/peephole passes
-        # are NOT run on the subroutine stream: their slot-liveness model
-        # does not account for the @counter call/return control flow, so
-        # running them could elide a slot that survives a subroutine
-        # round-trip. The AST-level Tier-B passes already ran above.
-        return emit_with_subroutines(
+        # optimized StackcheckResult. The AST-level Tier-B passes already
+        # ran above.
+        instrs = emit_with_subroutines(
             opt.result,
             config=subroutine_config,
             force_promote=force_promote,
         )
+        # Run the post-emit slot/peephole passes over the subroutine
+        # stream too (bead mforth-i8h). Their CFG/liveness model is now
+        # @counter-aware: ``set @counter <X>`` / ``op <f> @counter ...`` are
+        # modeled as computed jumps (a call's successors include the entry
+        # target AND the return fall-through; a computed return / jump-table
+        # dispatch conservatively reaches every labelled position). So the
+        # passes correctly preserve any slot live across a subroutine
+        # round-trip while still collapsing dead copies inside subroutine
+        # bodies — extra size wins ``-Osize`` previously left on the table.
+        # The symbolic ``set @counter <label>`` / ``set __ret_* <label>``
+        # operands are NOT slots, so the passes pass them through untouched;
+        # label sentinels survive so :func:`resolve_subroutine_labels`
+        # resolves them downstream.
+        return optimize_instrs(instrs, level)
 
     instrs = emit(opt.result)
     instrs = optimize_instrs(instrs, level)

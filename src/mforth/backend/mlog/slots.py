@@ -387,6 +387,61 @@ def _is_droppable_set(opcode: str, operands: tuple) -> bool:
     )
 
 
+# ---------------------------------------------------------------------------
+# @counter-aware control flow (bead mforth-i8h)
+# ---------------------------------------------------------------------------
+#
+# ``-Osize`` emits user words as subroutines via mlog's WRITABLE ``@counter``
+# (CLAUDE.md hard rule):
+#
+#   * ``set @counter <entry-label>``     — a CALL (computed goto to a
+#     statically-known subroutine entry; control RETURNS to the next line).
+#   * ``set @counter <ret-var>`` (e.g.   — a computed RETURN to an UNKNOWN
+#     ``set @counter __ret_BIG``)          target (any call site's return
+#                                          label); does NOT fall through.
+#   * ``op add @counter @counter <off>`` — a jump-table dispatch (computed
+#     goto to an unknown target).
+#
+# The original successor model treated every ``set`` as a plain
+# fall-through, so it never followed these edges — which is exactly why the
+# post-emit passes were SKIPPED on the subroutine stream. Modeling them
+# correctly (and CONSERVATIVELY when the target is not statically known) is
+# what lets ``-Osize`` run slot-liveness + peephole over subroutine bodies
+# for extra size wins without breaking the headline equivalence property.
+
+
+def _at_counter_write(opcode: str, operands: tuple):
+    """Classify an instruction that WRITES ``@counter`` (a computed jump).
+
+    Returns one of:
+
+    * ``None`` — not a write to ``@counter`` (ordinary control flow).
+    * ``("call", <label>)`` — ``set @counter <X>`` where ``<X>`` is a
+      symbolic label (a statically-known subroutine entry). Control
+      transfers to ``<X>`` and, because the callee returns, ALSO to the
+      fall-through line.
+    * ``("computed", None)`` — a computed jump whose target is NOT
+      statically a label: ``set @counter <ret-var>`` (computed return,
+      e.g. ``__ret_*``) or ``op add @counter @counter <off>`` (jump
+      table). Conservatively reaches every labelled position; no
+      fall-through.
+
+    The "call vs computed" split is decided by the caller, which knows
+    whether the operand resolves to a label. Here we only detect the
+    @counter-write shape and surface the candidate target token.
+    """
+    if opcode == "set" and len(operands) == 2 and operands[0] == "@counter":
+        return ("set@counter", operands[1])
+    if (
+        opcode == "op"
+        and len(operands) >= 2
+        and operands[1] == "@counter"
+    ):
+        # op <f> @counter ... — jump-table dispatch, unknown target.
+        return ("computed", None)
+    return None
+
+
 def _build_successors(instrs: list) -> tuple:
     """Build the control-flow successor lists over real (non-sentinel)
     instructions.
@@ -400,7 +455,10 @@ def _build_successors(instrs: list) -> tuple:
     Mirrors :func:`finalize.resolve_labels`' line-counting so a
     ``jump <label>`` resolves to the same instruction the finalize pass
     would target. A label sitting past the last instruction maps to the
-    auto-loop wrap target (index 0)."""
+    auto-loop wrap target (index 0).
+
+    ``set @counter <X>`` / ``op <f> @counter ...`` are modeled as computed
+    jumps (bead mforth-i8h) — see :func:`_at_counter_write`."""
     real: list = []
     label_to_real: dict = {}
     for label, opcode, _operands in instrs:
@@ -418,10 +476,32 @@ def _build_successors(instrs: list) -> tuple:
             return 0
         return idx
 
+    # Every distinct line that some label resolves to — the conservative
+    # successor set for a computed jump whose target isn't statically known
+    # (a ``set @counter <ret-var>`` return, or an ``op add @counter`` table
+    # dispatch). Unioning all label targets guarantees liveness never drops
+    # a store that is read at ANY reachable computed-jump landing site.
+    all_label_targets = sorted({label_to_real[lbl] for lbl in label_to_real
+                                if label_to_real[lbl] < n})
+
     succ: list = []
     for i, (opcode, operands) in enumerate(real):
         outs: list = []
-        if opcode == "jump":
+        atc = _at_counter_write(opcode, operands)
+        if atc is not None:
+            kind, target_tok = atc
+            if kind == "set@counter" and target_tok in label_to_real:
+                # CALL: ``set @counter <entry-label>``. Control enters the
+                # subroutine AND (because it returns) the next line.
+                outs.append(resolve(target_tok))
+                if i + 1 < n:
+                    outs.append(i + 1)
+            else:
+                # Computed jump to an unknown target (return via __ret_*,
+                # jump table, or any non-label @counter write): reach every
+                # labelled position; no deterministic fall-through.
+                outs.extend(all_label_targets)
+        elif opcode == "jump":
             target = operands[0] if operands else None
             cond = operands[1] if len(operands) > 1 else "always"
             if target is not None:
