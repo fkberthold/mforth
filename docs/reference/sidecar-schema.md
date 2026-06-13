@@ -23,6 +23,8 @@ index  = N                  # Mode B — opt-in, fragile to re-link order
 # type-specific (optional):
 size    = N                 # memory-cell capacity
 enabled = bool              # switch initial state
+# seeded sensor readings (optional):
+sensors = { "@copper" = 240, "@totalItems" = 80 }
 
 [clock]
 ipt      = 2 | 8 | 25       # micro | logic | hyper processor
@@ -93,6 +95,36 @@ required** — both is an error, neither is an error.
 Both are accepted on any link type (the loader does not enforce
 type-pairing), but only meaningful for the type they model. Future
 schema versions may tighten this.
+
+### Seeded sensor readings — `sensors` (optional)
+
+By default a freshly-built block reads `0` for every property, so
+`<block> @prop SENSOR` returns `0.0`. The optional `sensors` inline table
+seeds initial readings, so `SENSOR` returns real data — which is what
+lets a host-REPL (or `mforth check`) test exercise a controller against
+the case it cares about, not just the empty baseline.
+
+```toml
+[links.vault1]
+type    = "core"
+target  = "vault1"
+sensors = { "@copper" = 240, "@totalItems" = 80, "@itemCapacity" = 100 }
+```
+
+- **Keys** are the same SENSOR-readable `@`-property names the `.fs`
+  source passes to `SENSOR`: the sensor properties (`@totalItems`,
+  `@itemCapacity`, `@health`, …), item content handles (`@copper`,
+  `@graphite`, …), and liquid content handles (`@water`, `@slag`, …).
+  See the [dictionary reference](./dictionary.md) for the full readable
+  set. A key outside that set is an error.
+- **Values** are numbers (int or float; booleans are rejected). They are
+  stored as floats.
+- An unseeded property keeps its `0.0` default.
+
+The seeded value is read **identically** by the host `SENSOR` primitive
+and by the compiled mlog `sensor` instruction — both back ends consult
+the one `MockWorld` that `build_world` seeds from this table — so the
+REPL ↔ mlog equivalence property holds for sense-and-decide programs.
 
 ## `[clock]`
 
@@ -202,6 +234,50 @@ enabled = "yes"
 
 > `[links.x].enabled must be a boolean`
 
+### `sensors` is not a table
+
+```toml
+[links.x]
+type    = "core"
+target  = "vault1"
+sensors = 42
+```
+
+> `[links.x].sensors must be a table of `@property = value` entries`
+
+### `sensors` key is not `@`-prefixed
+
+```toml
+[links.x]
+type    = "core"
+target  = "vault1"
+sensors = { "copper" = 240 }
+```
+
+> `[links.x].sensors key 'copper' must be an `@`-prefixed property name (e.g. '@copper', '@totalItems')`
+
+### `sensors` key is not a SENSOR-readable property
+
+```toml
+[links.x]
+type    = "core"
+target  = "vault1"
+sensors = { "@notAProp" = 1 }
+```
+
+> `[links.x].sensors key '@notAProp' is not a known SENSOR-readable property — see the dictionary reference for the readable `@`-names (items, liquids, sensor stats)`
+
+### `sensors` value is not a number
+
+```toml
+[links.x]
+type    = "core"
+target  = "vault1"
+sensors = { "@copper" = "lots" }
+```
+
+> `[links.x].sensors['@copper'] must be a number (got 'lots')`
+
 ### `[links]` is not a table
 
 ```toml
@@ -258,7 +334,7 @@ The loader lives in `mforth.backend.sidecar`. Stable surface:
 | `load_sidecar(path) -> WorldConfig`     | Read + parse a file; raises `SidecarError`.                                          |
 | `parse_sidecar(data, source=...)`       | Validate an already-parsed TOML dict; same return + error contract.                  |
 | `WorldConfig`                           | `links: list[LinkSpec]`, `clock: ClockConfig`.                                       |
-| `LinkSpec`                              | `mforth_name, type, target, index, size, enabled` (frozen dataclass).                |
+| `LinkSpec`                              | `mforth_name, type, target, index, size, enabled, sensors` (frozen dataclass).       |
 | `ClockConfig`                           | `ipt: int = 8`, `realtime: bool = False` (frozen dataclass).                         |
 | `SidecarError`                          | Raised on every failure path above; `.message` and `.source` attributes.             |
 

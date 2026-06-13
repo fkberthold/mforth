@@ -89,8 +89,10 @@ in Part I: `=` leaves one flag, `DUP` makes it two, `.` prints one copy,
 and `IF` consumes the other to choose the action. Printing the decision
 is also how the checker watches a control word work — `CONTROL-ENABLED`
 itself produces no printed output, so a checkable controller surfaces its
-*decision* on the way to acting on it. For the empty vault the simulator
-hands you, `restock` prints `1` and enables the miner.
+*decision* on the way to acting on it. The exercise's sidecar seeds
+`vault1` empty (`@totalItems = 0`) — a deliberately drained vault — so
+`restock` prints `1` and enables the miner. Re-seed the vault with stock
+and the same word prints `0` and stops it.
 
 This is a complete controller. The only thing missing is making it *keep*
 running — sensing, deciding, and acting once per tick, forever. That's a
@@ -101,13 +103,16 @@ real Mindustry processor's auto-loop, and it's the subject of
 
 Write each `.fs` with its `\ @exercise <id>` marker and run
 `mforth check <file>`. `--scaffold <id>` stubs it; `--solution <id>`
-reveals the answer. Both exercises bundle their sidecar.
+reveals the answer. Both exercises bundle a sidecar that **seeds the
+vault's readings**, so your word senses real data.
 
 ### Exercise 12.1 — `should-run?` ( -- flag )
 
 Leave `1` when `vault1` has room (its `@totalItems` is below its
 `@itemCapacity`), else `0` — the flag a miner switch should be set to.
-(This is the *decision* half; exercise 12.2 acts on it.)
+(The sidecar seeds an `80`-of-`100` vault, so it *has* room and the
+checker expects `1`. This is the *decision* half; exercise 12.2 acts on
+it.)
 
 ```
 \ @exercise sim-101/05-decide
@@ -126,7 +131,8 @@ mforth check should-run.fs
 `SENSOR` `vault1`'s `@totalItems`; if it is empty (`= 0`) print `1` and
 `miner 1 CONTROL-ENABLED`, else print `0` and `miner 0 CONTROL-ENABLED`.
 Remember the literal-flag rule: branch, and call `CONTROL-ENABLED` with a
-literal in each arm.
+literal in each arm. (The sidecar seeds the vault empty, so the checker
+expects `1`.)
 
 ```
 \ @exercise sim-101/06-act

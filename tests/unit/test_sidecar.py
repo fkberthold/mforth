@@ -164,6 +164,127 @@ def test_switch_enabled_must_be_bool():
 
 
 # ---------------------------------------------------------------------------
+# Seeded sensor values (bead mforth-0pg)
+# ---------------------------------------------------------------------------
+
+
+def test_link_with_sensors_table():
+    cfg = parse_sidecar(
+        {
+            "links": {
+                "vault1": {
+                    "type": "core",
+                    "target": "vault1",
+                    "sensors": {"@copper": 240, "@totalItems": 80},
+                }
+            }
+        }
+    )
+    link = cfg.links[0]
+    assert link.sensors == {"@copper": 240.0, "@totalItems": 80.0}
+
+
+def test_link_without_sensors_defaults_to_empty_dict():
+    cfg = parse_sidecar(
+        {"links": {"vault1": {"type": "core", "target": "vault1"}}}
+    )
+    assert cfg.links[0].sensors == {}
+
+
+def test_link_sensors_accepts_floats():
+    cfg = parse_sidecar(
+        {
+            "links": {
+                "reactor": {
+                    "type": "generic",
+                    "target": "reactor1",
+                    "sensors": {"@heat": 0.5},
+                }
+            }
+        }
+    )
+    assert cfg.links[0].sensors == {"@heat": 0.5}
+
+
+def test_link_sensors_must_be_a_table():
+    with pytest.raises(SidecarError) as exc:
+        parse_sidecar(
+            {
+                "links": {
+                    "x": {"type": "core", "target": "c1", "sensors": 42}
+                }
+            }
+        )
+    assert "sensors" in str(exc.value).lower()
+
+
+def test_link_sensors_unknown_property_raises():
+    with pytest.raises(SidecarError) as exc:
+        parse_sidecar(
+            {
+                "links": {
+                    "x": {
+                        "type": "core",
+                        "target": "c1",
+                        "sensors": {"@notAProp": 1},
+                    }
+                }
+            }
+        )
+    msg = str(exc.value).lower()
+    assert "@notaprop" in msg
+    assert "not a known sensor-readable" in msg
+
+
+def test_link_sensors_property_must_start_with_at():
+    with pytest.raises(SidecarError) as exc:
+        parse_sidecar(
+            {
+                "links": {
+                    "x": {
+                        "type": "core",
+                        "target": "c1",
+                        "sensors": {"copper": 1},
+                    }
+                }
+            }
+        )
+    assert "copper" in str(exc.value).lower()
+
+
+def test_link_sensors_value_must_be_numeric():
+    with pytest.raises(SidecarError) as exc:
+        parse_sidecar(
+            {
+                "links": {
+                    "x": {
+                        "type": "core",
+                        "target": "c1",
+                        "sensors": {"@copper": "lots"},
+                    }
+                }
+            }
+        )
+    assert "@copper" in str(exc.value).lower()
+
+
+def test_link_sensors_value_bool_rejected():
+    with pytest.raises(SidecarError) as exc:
+        parse_sidecar(
+            {
+                "links": {
+                    "x": {
+                        "type": "core",
+                        "target": "c1",
+                        "sensors": {"@copper": True},
+                    }
+                }
+            }
+        )
+    assert "@copper" in str(exc.value).lower()
+
+
+# ---------------------------------------------------------------------------
 # Clock
 # ---------------------------------------------------------------------------
 

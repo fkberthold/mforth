@@ -6,17 +6,26 @@
 # when empty (so it refills), OFF otherwise. The DUP keeps a copy of the
 # flag for printing while the original drives the IF. Both arms call
 # CONTROL-ENABLED with a LITERAL 1/0 — v1's lifter requires that.
+#
+# The sidecar SEEDS `vault1` with `@totalItems = 0` (bead mforth-0pg) —
+# a vault the operator has DELIBERATELY drained to empty. Seeding it
+# explicitly (rather than leaning on the empty-block default) makes the
+# scenario the exercise tests an intentional one: this run models a vault
+# that needs refilling, so `restock` prints 1 and runs the miner. Try
+# bumping the seed (e.g. `@totalItems = 80`) and re-running to watch the
+# decision flip to 0.
 id = "sim-101/06-act"
 prompt = "Define `restock` ( -- ): SENSOR `vault1`'s `@totalItems`; if it is empty (= 0) PRINT 1 and `miner 1 CONTROL-ENABLED`, else PRINT 0 and `miner 0 CONTROL-ENABLED`."
-hint = "Compute the empty flag (`vault1 @totalItems SENSOR 0 =`), `DUP .` to print a copy, then `IF miner 1 CONTROL-ENABLED ELSE miner 0 CONTROL-ENABLED THEN` to act."
+hint = "Compute the empty flag (`vault1 @totalItems SENSOR 0 =`), `DUP .` to print a copy, then `IF miner 1 CONTROL-ENABLED ELSE miner 0 CONTROL-ENABLED THEN` to act. The sidecar seeded the vault empty (@totalItems = 0), so this run refills."
 sidecar = """
 [links.vault1]
-type   = "core"
-target = "vault1"
+type    = "core"
+target  = "vault1"
+sensors = { "@totalItems" = 0 }
 
 [links.miner]
-type   = "switch"
-target = "switch1"
+type    = "switch"
+target  = "switch1"
 enabled = false
 """
 

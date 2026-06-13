@@ -2,18 +2,20 @@
 #
 # Part II, chapter 11 (sensing). Two readings, one comparison: a vault is
 # OVER half full when its item count, doubled, exceeds its capacity. Both
-# readings come from the same block via two SENSORs. In the simulator a
-# fresh vault is empty (0 items, 0 capacity), so `0 > 0` is false and the
-# answer is 0 — the empty-vault baseline a real balancer starts from.
+# readings come from the same block via two SENSORs. The sidecar SEEDS
+# `vault1` with a real stock (80 items in a 100-capacity vault, bead
+# mforth-0pg), so `80*2 > 100` is true and the answer is 1 — the learner
+# weighs two ACTUAL readings the sidecar set, not the empty-block zeros.
 id = "sim-101/04-half-full"
 prompt = "Define `over-half?` ( -- flag ): SENSOR `vault1`'s `@totalItems` and `@itemCapacity`; leave 1 if items*2 > capacity, else 0."
-hint = "Sense the count, double it (`2 *`), sense the capacity, then `>`. Stack: ( items*2 capacity -- flag )."
+hint = "Sense the count, double it (`2 *`), sense the capacity, then `>`. Stack: ( items*2 capacity -- flag ). The sidecar seeded 80 items in a 100-capacity vault, so `160 > 100` is true."
 sidecar = """
 [links.vault1]
-type   = "core"
-target = "vault1"
+type    = "core"
+target  = "vault1"
+sensors = { "@totalItems" = 80, "@itemCapacity" = 100 }
 """
 
 [[case]]
 driver = "over-half? ."
-expect = ["0"]
+expect = ["1"]
