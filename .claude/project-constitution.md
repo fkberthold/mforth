@@ -27,7 +27,10 @@ forbidden: []
 
 canonical_commands:
   build: "pip install -e .[dev]"
-  test: "pytest -q"
+  # `python3 -m pytest` (not bare `pytest`): the project's deps (websockets,
+  # hypothesis) live in the python3 / ~/.local env, and bare `pytest` on some
+  # hosts is a different interpreter that lacks them (mforth-80l / -ti7).
+  test: "python3 -m pytest -q"
   lint: ""
   gen: "cd tree-sitter-mforth && tree-sitter generate"
   dev: "mforth run examples/blink.fs --serve"
