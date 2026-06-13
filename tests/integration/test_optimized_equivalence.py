@@ -259,3 +259,146 @@ def test_instrumentation_counts_may_differ_but_sinks_match():
     reads_o0 = sum(isinstance(e, VariableReadEvent) for e in events_o0)
     reads_ofast = sum(isinstance(e, VariableReadEvent) for e in events_ofast)
     assert reads_ofast <= reads_o0
+
+
+# ---------------------------------------------------------------------------
+# bead mforth-i8h — @counter-aware slot/peephole passes run over the -Osize
+# subroutine stream. Two guarantees: (1) the post-emit passes now FIRE on
+# subroutine bodies (so -Osize gets STRICTLY fewer instructions than the raw
+# subroutine emission without them), and (2) the headline sink-equivalence to
+# -O0 still holds across the @counter call/return control flow.
+# ---------------------------------------------------------------------------
+
+# A program whose ``BIG`` body keeps stack slots alive (DUP + arithmetic on a
+# runtime input survives const-folding), called 3 times. A LOW subroutine
+# budget makes the -Osize promotion heuristic auto-emit ``BIG`` as a
+# subroutine (no force_promote) while keeping BOTH the O0 and Osize programs
+# small enough to run through the interpreter quickly. The slot-retaining body
+# gives the post-emit slot-liveness + peephole passes real ``set s<N>`` copies
+# to collapse INSIDE the subroutine body — the win bead mforth-i8h unlocks.
+_OSIZE_SUBROUTINE_SRC = (
+    ": BIG\n"
+    + ("  DUP DUP * +\n" * 4)
+    + "  PRINT\n;\n"
+    + ("7 BIG\n" * 3)
+    + "display PRINTFLUSH\n"
+)
+
+# Force the heuristic to promote on this small program: the default budget
+# (800) would never fire, so we shrink it. min_body/min_call keep the gate
+# honest (BIG's body >= 5 instrs, called >= 2 times).
+from mforth.backend.mlog.subroutines import SubroutineConfig  # noqa: E402
+
+_OSIZE_CFG = SubroutineConfig(
+    max_instructions=20, min_body_instructions=5, min_call_count=2
+)
+
+
+def _compile_osize(src: str, level: int, world_config: WorldConfig) -> str:
+    return compile_text(
+        src,
+        opt_level=level,
+        world_config=world_config,
+        dictionary=_seeded_dictionary(),
+        source_path="<bench>",
+        subroutine_config=_OSIZE_CFG,
+    )
+
+
+def _run_compiled_osize(src: str, level: int, world_config: WorldConfig) -> list:
+    """Like ``_run_compiled`` but threads the low subroutine budget so the
+    heuristic auto-promotes."""
+    dictionary = _seeded_dictionary()
+    sidecar_link_names = {
+        e.name
+        for e in dictionary._entries.values()  # noqa: SLF001
+        if isinstance(e, UserVariable)
+    }
+    program = parse(src, file="<bench>")
+    resolved = resolve(program, dictionary=_seeded_dictionary())
+    user_vars = {
+        e.name
+        for e in resolved._entries.values()  # noqa: SLF001
+        if isinstance(e, UserVariable) and e.name not in sidecar_link_names
+    }
+    mlog_text = _compile_osize(src, level, world_config)
+    world = build_world(world_config)
+    interp = MlogInterpreter(
+        world=world, text=mlog_text, user_variables=user_vars
+    )
+    interp.run(iterations=ITERATIONS)
+    return list(world.events)
+
+
+def test_osize_passes_fire_on_subroutine_stream_and_shrink():
+    """The @counter-aware post-emit passes now run over the -Osize subroutine
+    stream (bead mforth-i8h). Compiling at -Osize WITH the wired passes must
+    emit STRICTLY FEWER instructions than the raw subroutine emission WITHOUT
+    them — proving the passes fire on subroutine bodies (the size win that was
+    previously left on the table)."""
+    from mforth.backend.mlog.subroutines import (
+        emit_with_subroutines,
+        resolve_subroutine_labels,
+    )
+    from mforth.optimize import optimize_ast
+    from mforth.stackcheck import stackcheck
+
+    wc = _load_sidecar_text(_SIDECAR)
+    mlog_with = _compile_osize(_OSIZE_SUBROUTINE_SRC, OptLevel.OSIZE, wc)
+
+    # WITH the wired passes (the real -Osize path through compile_text).
+    with_passes = sum(
+        1
+        for line in mlog_with.splitlines()
+        if line and not line.lstrip().startswith("#")
+    )
+
+    # WITHOUT the post-emit passes: run the same AST-stage optimization and
+    # subroutine emission, then resolve labels directly (skipping
+    # optimize_instrs). This is exactly what -Osize did BEFORE bead mforth-i8h.
+    program = parse(_OSIZE_SUBROUTINE_SRC, file="<bench>")
+    resolved = resolve(program, dictionary=_seeded_dictionary())
+    result = stackcheck(program, dictionary=resolved)
+    opt = optimize_ast(result.program, OptLevel.OSIZE, result.dictionary)
+    raw = emit_with_subroutines(opt.result, config=_OSIZE_CFG)
+    raw_resolved = resolve_subroutine_labels(raw)
+    without_passes = sum(1 for (_l, op, _o) in raw_resolved if op is not None)
+
+    # The heuristic must actually have promoted a subroutine (else the test is
+    # vacuous): the raw stream carries a computed return.
+    assert any(
+        op == "set" and ops and ops[0] == "@counter" and "__ret_" in str(ops[-1])
+        for (_l, op, ops) in raw
+    ), "expected -Osize to auto-promote a subroutine for this program"
+
+    assert with_passes < without_passes, (
+        f"@counter-aware passes did not shrink the -Osize subroutine stream: "
+        f"with_passes={with_passes} (compile_text), "
+        f"without_passes={without_passes} (raw emit_with_subroutines)"
+    )
+
+
+def test_osize_subroutine_stream_sink_equivalent_to_O0():
+    """The headline gate: -Osize (with the @counter-aware passes firing over
+    the auto-promoted subroutine bodies) produces a SINK-event stream
+    identical to -O0 — print/control/printflush/wait match exactly across the
+    @counter call/return control flow; only instrumentation counts may
+    differ (mforth-ump Option A)."""
+    wc = _load_sidecar_text(_SIDECAR)
+    events_o0 = _run_compiled_osize(_OSIZE_SUBROUTINE_SRC, OptLevel.O0, wc)
+    events_osize = _run_compiled_osize(_OSIZE_SUBROUTINE_SRC, OptLevel.OSIZE, wc)
+
+    # Sanity: the Osize compile actually promoted (the computed return only
+    # appears in a subroutine body), so this exercises the @counter path.
+    assert "set @counter __ret_" in _compile_osize(
+        _OSIZE_SUBROUTINE_SRC, OptLevel.OSIZE, wc
+    ), "expected -Osize to auto-promote a subroutine for this program"
+
+    assert _sink_streams_equal(events_o0, events_osize), (
+        f"-Osize subroutine stream diverged from -O0 on the sink channel:\n"
+        f"  O0 sinks    = {_sink_events(events_o0)!r}\n"
+        f"  Osize sinks = {_sink_events(events_osize)!r}"
+    )
+    # And there IS observable output (3 prints + a printflush per pass × the
+    # ITERATIONS the harness runs), so the equivalence is not vacuous.
+    assert len(_sink_events(events_osize)) > 0
