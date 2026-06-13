@@ -80,6 +80,7 @@ from typing import Optional
 
 from mforth.backend.host import Executor, ExecutionError
 from mforth.backend.primitives import register_all
+from mforth.backend.world import MessagePrintEvent
 from mforth.dictionary import UnresolvedWordError, resolve
 from mforth.lex import LexError, tokenize
 from mforth.parse import ParseError, _Parser
@@ -290,6 +291,11 @@ class Repl:
         # --- Execute (snapshot state for runtime-error rollback) ---
         ds_snapshot = list(self.executor.data_stack)
         vars_snapshot = dict(self.executor.variables)
+        # Watermark the event stream so we can surface only THIS line's
+        # printed output (mforth-os2). `.`/PRINT emit MessagePrintEvents
+        # rather than touching stdout (the equivalence-safe sink); the REPL
+        # echoes their text back to the user without altering the stream.
+        print_mark = len(self.executor.world.events)
         try:
             self.executor.execute(result)
         except ExecutionError as e:
@@ -307,7 +313,17 @@ class Repl:
                 ok=False, output=f"{type(e).__name__}: {e}"
             )
 
-        return ReplResult(ok=True, output="ok")
+        # Surface this line's print output (`.` / PRINT) to the user,
+        # concatenated in emission order with no separator — matching the
+        # mlog print-buffer accumulation semantics. Rendered on the same
+        # line as the `ok` marker, Forth-style (e.g. "7 ok", "count= ok").
+        printed = "".join(
+            e.text
+            for e in list(self.executor.world.events)[print_mark:]
+            if isinstance(e, MessagePrintEvent)
+        )
+        output = f"{printed} ok" if printed else "ok"
+        return ReplResult(ok=True, output=output)
 
     def _rollback_dictionary(self, snapshot: set) -> None:
         """Remove any dictionary entries added since the snapshot."""

@@ -46,6 +46,7 @@ from pathlib import Path
 from mforth.backend.host import ExecutionError
 from mforth.backend.runner import Runner, RunnerError
 from mforth.backend.sidecar import SidecarError
+from mforth.backend.world import MessagePrintEvent
 from mforth.cli import register_subcommand
 from mforth.dictionary import UnresolvedWordError
 from mforth.lex import LexError
@@ -155,6 +156,22 @@ def _handle_run(args: argparse.Namespace) -> int:
         print(_format_pipeline_error(e, source_path), file=sys.stderr)
         return 1
 
+    # mforth-os2: echo printed output to the terminal as it fires. `.`/PRINT
+    # emit MessagePrintEvents rather than writing stdout (the equivalence-safe
+    # sink); this read-only subscriber renders their text to stdout — the
+    # headless analog of the REPL's print echo, mirroring the viz subscriber
+    # pattern (.20) WITHOUT touching the event stream. Concatenates with no
+    # separator, matching the mlog print-buffer accumulation semantics.
+    _printed = {"any": False}
+
+    def _echo_print(event) -> None:
+        if isinstance(event, MessagePrintEvent):
+            sys.stdout.write(event.text)
+            sys.stdout.flush()
+            _printed["any"] = True
+
+    runner.executor.world.events.subscribe(_echo_print)
+
     # --serve (bead .22): boot the web viz subscribed to the run's
     # EventStream. The server is torn down on every exit path via the
     # finally below — `VizServer.stop` detaches the subscriber + joins
@@ -174,6 +191,11 @@ def _handle_run(args: argparse.Namespace) -> int:
             except ExecutionError as e:
                 print(str(e), file=sys.stderr)
                 return 1
+            # Terminate a single-pass run's printed output with a newline so
+            # the shell prompt lands on its own line (mforth-os2).
+            if _printed["any"]:
+                sys.stdout.write("\n")
+                sys.stdout.flush()
             return 0
 
         # Pacing: when serving, sleep `--tick-ms` between iterations so a

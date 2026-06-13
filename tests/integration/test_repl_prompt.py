@@ -328,3 +328,58 @@ def test_repl_load_preloads_definitions(tmp_path):
     assert r.ok, f"unexpected: {r.output}"
     prints = [e for e in repl.executor.world.events if e.__class__.__name__ == "MessagePrintEvent"]
     assert any(getattr(e, "text", None) == "12" for e in prints)
+
+
+# ---------------------------------------------------------------------------
+# 10. Print output is rendered to the user (mforth-os2)
+#
+# Regression for mforth-os2: `.` and PRINT emitted a MessagePrintEvent but
+# the REPL returned only "ok", so the printed value never reached the user.
+# The event stream is unchanged by the fix (equivalence intact) — the REPL
+# now ALSO surfaces the printed text in ReplResult.output. Decision (Frank,
+# 2026-06-13): echo immediately, Forth-like, on the same line as `ok`.
+# ---------------------------------------------------------------------------
+
+
+def test_repl_dot_renders_printed_value_in_output():
+    """`3 4 + .` must surface the popped value '7' to the user, not just
+    emit a MessagePrintEvent. This is the headline mforth-os2 symptom."""
+    repl = Repl()
+    r = repl.run_line("3 4 + .")
+    assert r.ok, f"unexpected error: {r.output}"
+    assert "7" in r.output, f"expected printed '7' in output, got {r.output!r}"
+
+
+def test_repl_print_word_renders_in_output():
+    """PRINT output is also surfaced to the user in the REPL (same sink as
+    `.` — both funnel through world.print → MessagePrintEvent)."""
+    repl = Repl()
+    r = repl.run_line('." count=" PRINT')
+    assert r.ok, f"unexpected error: {r.output}"
+    assert "count=" in r.output, f"expected 'count=' in output, got {r.output!r}"
+
+
+def test_repl_multiple_prints_concatenate_in_output():
+    """Multiple prints on one line concatenate with no separator, matching
+    the mlog print-buffer accumulation semantics (bug-class coverage)."""
+    repl = Repl()
+    r = repl.run_line('." count=" PRINT 5 .')
+    assert r.ok, f"unexpected error: {r.output}"
+    assert "count=5" in r.output, f"expected 'count=5' in output, got {r.output!r}"
+
+
+def test_repl_printed_output_coexists_with_ok_marker():
+    """Printed output is surfaced ALONGSIDE the 'ok' marker, not instead of
+    it — so the user still sees the success signal."""
+    repl = Repl()
+    r = repl.run_line("42 .")
+    assert "42" in r.output, f"got {r.output!r}"
+    assert "ok" in r.output, f"got {r.output!r}"
+
+
+def test_repl_non_printing_line_is_still_exactly_ok():
+    """A line that prints nothing must still return exactly 'ok' — no stray
+    whitespace, no regression for the common no-output case."""
+    repl = Repl()
+    r = repl.run_line("1 2 +")
+    assert r.output == "ok", f"expected bare 'ok', got {r.output!r}"

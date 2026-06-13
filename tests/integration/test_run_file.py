@@ -308,6 +308,21 @@ def test_cli_run_counter_sidecar_exists_and_parses():
 
 
 # --------------------------------------------------------------------------
+# Print output reaches stdout (mforth-os2)
+# --------------------------------------------------------------------------
+
+
+def test_cli_run_no_loop_echoes_printed_value_to_stdout(loop_once_fs):
+    """Regression for mforth-os2: headless `mforth run --no-loop` must echo
+    printed output to stdout. Previously only `--serve` rendered the event
+    stream; the headless human surface swallowed it (the existing
+    `test_cli_run_no_loop_executes_program_once` only checked rc==0)."""
+    rc, out, err = _run_cli(["run", str(loop_once_fs), "--no-loop"])
+    assert rc == 0, f"stderr={err!r}"
+    assert "1" in out, f"expected printed '1' in stdout, got {out!r}"
+
+
+# --------------------------------------------------------------------------
 # Auto-loop + interrupt — CLI level
 # --------------------------------------------------------------------------
 
