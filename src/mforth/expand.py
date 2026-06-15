@@ -25,7 +25,6 @@ reachable through a control-flow body all raise ``ExpandError``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from mforth.parse import (
@@ -70,7 +69,7 @@ def _expand_terms(
     stack (for cycle detection). It is passed by value (frozenset) so
     each branch of a control-flow node gets its own scope.
     """
-    from mforth.dictionary import Macro, UserVariable, BuiltinWord
+    from mforth.dictionary import Macro
 
     result: list = []
     for term in terms:
@@ -135,18 +134,12 @@ def _check_purity(
     A world-sink call is a ``WordCall`` resolving to a ``BuiltinWord``
     with tag ``"mindustry"`` or ``"mindustry-control"``.
 
-    A runtime-state read is a ``@`` (fetch) word that immediately follows
-    a ``UserVariable`` name reference — i.e. we flag ``@`` whenever a
-    ``UserVariable`` appears in the body (the fetch pattern ``x @`` puts
-    the var name then the fetch operation; we flag ``@`` itself because
-    seeing a UserVariable in a macro body is only useful for fetching).
-
-    To keep the check simple and conservative: if ANY term in the body
-    (transitively through nested macros) resolves to a UserVariable, we
-    treat that as a potential runtime read and raise PurityError.
+    A runtime-state read is a ``@`` (fetch) applied to a ``UserVariable``
+    — the ``x @`` pattern, where the variable name precedes the fetch.
+    We flag the ``@`` when it immediately follows a ``UserVariable``
+    reference. The walk descends into control-flow bodies and recurses
+    into nested macros (transitive purity).
     """
-    from mforth.dictionary import Macro, UserVariable, BuiltinWord
-
     _check_purity_terms(body, dictionary, macro_name, set())
 
 
