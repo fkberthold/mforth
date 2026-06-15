@@ -383,8 +383,11 @@ def compile_text(
     world_config = world_config if world_config is not None else WorldConfig()
     dictionary = dictionary if dictionary is not None else standard_dictionary()
 
+    from mforth.expand import expand  # local import to avoid a cycle
+
     program = parse(text, file=str(source_path))
     dictionary = resolve(program, dictionary=dictionary)
+    program = expand(program, dictionary)
     result = stackcheck(program, dictionary=dictionary)
 
     instrs = optimize_and_emit(

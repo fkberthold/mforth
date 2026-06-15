@@ -102,7 +102,7 @@ from mforth.backend.sidecar import (
     load_sidecar,
 )
 from mforth.backend.world import Block, MockWorld
-from mforth.dictionary import UserVariable, resolve, standard_dictionary
+from mforth.dictionary import Dictionary, UserVariable, resolve, standard_dictionary
 from mforth.lex import LexError
 from mforth.parse import ParseError, SrcLoc, parse
 from mforth.stackcheck import StackcheckResult, stackcheck
@@ -212,7 +212,12 @@ class Runner:
     # ---- construction --------------------------------------------------
 
     @classmethod
-    def from_path(cls, source_path: Union[str, Path]) -> "Runner":
+    def from_path(
+        cls,
+        source_path: Union[str, Path],
+        *,
+        dictionary: Optional[Dictionary] = None,
+    ) -> "Runner":
         """Load + pipeline a ``.fs`` source file.
 
         Reads the file, finds its sibling sidecar, runs lex/parse/resolve/
@@ -253,7 +258,13 @@ class Runner:
         # unresolved-word check; passing a pre-populated dictionary into
         # `resolve` is the documented extension point for exactly this
         # scenario.
-        dictionary = standard_dictionary()
+        #
+        # When the caller passes a pre-seeded ``dictionary`` (e.g. with
+        # ``Macro`` entries for bead mforth-7h1.1), use it as the base
+        # and apply sidecar link seeding on top. When no dictionary is
+        # provided, build a fresh standard dictionary as before.
+        base_dict = dictionary if dictionary is not None else standard_dictionary()
+        dictionary = base_dict
         sidecar_src = SrcLoc(
             str(sidecar_path) if sidecar_path is not None else str(path), 1, 1
         )
@@ -268,8 +279,11 @@ class Runner:
                 )
 
         # Pipeline (lex + parse combined inside `parse`).
+        from mforth.expand import expand  # local import to avoid a cycle
+
         program = parse(text, file=str(path))
         dictionary = resolve(program, dictionary=dictionary)
+        program = expand(program, dictionary)
         result = stackcheck(program, dictionary=dictionary)
 
         # MockWorld + executor + canonical primitive table.

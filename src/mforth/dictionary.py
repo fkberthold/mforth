@@ -68,7 +68,29 @@ class UserVariable:
     tag: str = "var"
 
 
-DictEntry = Union[BuiltinWord, Definition, UserVariable]
+@dataclass(frozen=True)
+class Macro:
+    """Internal compile-time meta-word representation (bead mforth-7h1.1).
+
+    A ``Macro`` has a name and a body (list of Terms). It is registered in
+    the dictionary programmatically (no ``.fs`` surface syntax in B1). The
+    expand phase (``mforth.expand``) replaces every ``WordCall`` that
+    resolves to a ``Macro`` with the macro's body, recursively to a fixpoint,
+    before stackcheck and codegen run. The stackcheck and both backends only
+    ever see the fully-expanded AST — no ``Macro`` entries survive expansion.
+
+    Note: ``Macro`` is intentionally excluded from the ``DictEntry``
+    union for static typing purposes (``resolve()`` only registers
+    builtins, definitions, and variables); macros are seeded directly into
+    ``_entries`` for B1.  ``resolve()`` tolerates an already-present
+    ``Macro`` entry during its existence-check walk.
+    """
+
+    name: str
+    body: list
+
+
+DictEntry = Union[BuiltinWord, Definition, UserVariable, Macro]
 
 
 # ---------------------------------------------------------------------------
@@ -752,6 +774,7 @@ def resolve(program: Program, dictionary: Optional[Dictionary] = None) -> Dictio
 __all__ = [
     "BuiltinWord",
     "Dictionary",
+    "Macro",
     "StackEffect",
     "UnresolvedWordError",
     "UserVariable",
