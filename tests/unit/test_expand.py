@@ -493,3 +493,123 @@ def test_cross_backend_expanded_ast_yields_identical_sink_events():
 
     assert [e.text for e in mlog_prints] == [e.text for e in host_prints]
     assert [e.text for e in host_prints] == ["15"]
+
+
+# ===========================================================================
+# 8. PIPELINE WIRING (Invariant 1, in the REAL front-ends) — expand() must be
+#    invoked BETWEEN resolve and stackcheck inside BOTH front-end entry
+#    points, not merely exist as a standalone function.
+#
+#    Mechanism that makes these robust: a seeded ``Macro`` has NO
+#    ``StackEffect``. If a macro-using program is pushed through the REAL
+#    pipeline with that seeded dictionary:
+#      * WITHOUT the wiring, stackcheck reaches the unexpanded ``Macro``
+#        WordCall and crashes/errors (no StackEffect) → the test fails (RED).
+#      * WITH the wiring, expand() removes the macro before stackcheck → the
+#        program compiles/runs and the observable result is the EXPANDED one.
+#    So these tests fail until expand is actually wired in.
+# ===========================================================================
+
+
+def test_compile_text_wires_expand_pass():
+    """The MLOG front-end (``mforth.optimize.compile_text``) runs ``expand``
+    between resolve and stackcheck.
+
+    A macro ``inc5 == 5 +`` is seeded into the dictionary handed to
+    ``compile_text``. The source ``10 inc5 PRINT`` can only compile if
+    ``compile_text`` expands the macro before stackcheck (a ``Macro`` has no
+    ``StackEffect``, so an unexpanded pipeline errors at stackcheck). We then
+    PROVE the expansion happened by RUNNING the emitted mlog and asserting the
+    observable PRINT is ``"15"`` (10 + 5), i.e. the macro body really was
+    spliced in — not merely tolerated.
+    """
+    from mforth.mlog_interp import MlogInterpreter
+    from mforth.optimize import OptLevel, compile_text
+    from mforth.backend.world import MessagePrintEvent, MockWorld
+
+    inc5 = Macro(name="inc5", body=[_lit(5), _w("+")])
+    seed = _seed(inc5)
+
+    mlog_text = compile_text(
+        "10 inc5 PRINT",
+        opt_level=OptLevel.O0,
+        dictionary=seed,
+        source_path="<test>",
+    )
+
+    world = MockWorld()
+    MlogInterpreter(world=world, text=mlog_text, user_variables=set()).run(
+        iterations=1
+    )
+    prints = [e for e in world.events if isinstance(e, MessagePrintEvent)]
+    assert [e.text for e in prints] == ["15"]
+
+
+def test_compile_text_rejects_impure_macro():
+    """Purity (Invariant 2) holds through the REAL mlog pipeline, not just the
+    bare ``expand`` function.
+
+    An impure macro (its body calls the world-sink ``PRINT``) pushed through
+    ``compile_text`` must raise ``PurityError`` — proving the wired ``expand``
+    enforces purity inside the front-end, before stackcheck/codegen.
+    """
+    from mforth.optimize import OptLevel, compile_text
+
+    bad = Macro(name="say", body=[_lit(1), _w("PRINT")])
+    seed = _seed(bad)
+
+    with pytest.raises(PurityError):
+        compile_text(
+            "say",
+            opt_level=OptLevel.O0,
+            dictionary=seed,
+            source_path="<test>",
+        )
+
+
+def test_host_runner_wires_expand_pass(tmp_path):
+    """The HOST/REPL front-end (``mforth.backend.runner.Runner``) runs
+    ``expand`` between resolve and stackcheck.
+
+    We drive the program through the runner's OWN public code path (NOT a
+    hand-assembled resolve→stackcheck→Executor pipeline) so the test pins that
+    ``runner.py`` ITSELF wires expand. A macro ``inc5 == 5 +`` is seeded into
+    the dictionary the runner uses; the source ``10 inc5 PRINT`` can only run
+    if the runner expands the macro before stackcheck (a ``Macro`` has no
+    ``StackEffect``). We assert the host PRINT event is ``"15"`` — the
+    expanded result, identical to the mlog backend (Invariant 1).
+
+    SEAM (flagged for the implementer): ``Runner.from_path`` currently builds
+    its OWN ``standard_dictionary()`` internally (runner.py ~line 256) and
+    exposes NO way to inject a pre-seeded dictionary, AND B1 has no ``.fs``
+    macro surface syntax — so today a seeded ``Macro`` cannot reach the runner
+    through any public entry point. This test pins the minimal seam the
+    implementer must add: ``Runner.from_path`` must accept an optional
+    ``dictionary=`` parameter (a pre-seeded dictionary, threaded into the
+    runner's resolve step exactly the way ``compile_text(dictionary=...)``
+    already does), AND ``Runner.from_path`` must call ``expand`` between
+    resolve and stackcheck. With that seam in place + the wiring, this test
+    goes GREEN; without either it stays RED.
+    """
+    from mforth.backend.runner import Runner
+    from mforth.backend.world import MessagePrintEvent
+
+    inc5 = Macro(name="inc5", body=[_lit(5), _w("+")])
+    seed = _seed(inc5)
+
+    src = tmp_path / "macro_inc.fs"
+    src.write_text("10 inc5 PRINT\n")
+
+    # Drive the runner's real public path with the seeded dictionary. The
+    # `dictionary=` keyword is the seam the implementer must add (see
+    # docstring); the runner must thread it into resolve and then run expand
+    # before stackcheck.
+    runner = Runner.from_path(src, dictionary=seed)
+    runner.run_once()
+
+    prints = [
+        e
+        for e in runner.executor.world.events
+        if isinstance(e, MessagePrintEvent)
+    ]
+    assert [e.text for e in prints] == ["15"]
