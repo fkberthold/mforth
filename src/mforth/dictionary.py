@@ -760,25 +760,18 @@ def resolve(program: Program, dictionary: Optional[Dictionary] = None) -> Dictio
     for var in _collect_variable_declarations(program):
         d.add_variable(var)
 
-    # Phase 0a — CREATE/,/DOES> defining-word stamping (bead mforth-7h1.2).
-    # Detect defining words and stamp each child invocation into a Macro in the
-    # dictionary BEFORE the existence check, so stamped child references resolve
-    # to Macros and the meta-words (CREATE / , / DOES>) + defining-word names
-    # are tolerated. The actual program transform (dropping the defining-word
-    # definitions + child-invocation sequences) happens in ``expand``. Raises
-    # ``CellBoundaryError`` (D5) on a boundary-crossing child.
-    from mforth.expand import (  # local import: avoid cycle
-        register_defining_words,
-        strip_defining_words_in_place,
-    )
+    # Phase 0a — CREATE/,/DOES> defining-word TOLERANCE (bead mforth-7h1.2).
+    # ``resolve``'s contract is to build the dictionary + check resolution; it
+    # must NOT transform/mutate the program and must NOT compute stamps or raise
+    # CellBoundaryError. So we only collect the names the existence check must
+    # tolerate — the meta-words (CREATE / , / DOES>), every defining-word name,
+    # and every stamped-child name — via a pure name walk. The actual
+    # register-stamp+strip (and any CellBoundaryError) happens in ``expand``,
+    # the single meta-elimination seam (design D1/D12), which runs between
+    # ``resolve`` and ``stackcheck`` in every real pipeline.
+    from mforth.expand import collect_tolerated_names  # local import: avoid cycle
 
-    tolerated = register_defining_words(program, d)
-    # Strip the defining-word definitions + child-invocation sequences from the
-    # program IN PLACE (and inline stamped-child references to literals), so a
-    # downstream consumer that runs its own ``stackcheck``/``emit`` pipeline
-    # (e.g. the equivalence harness) — without re-threading the program through
-    # ``expand`` — never sees CREATE/,/DOES> or a stamped-child Macro.
-    strip_defining_words_in_place(program, d)
+    tolerated = collect_tolerated_names(program)
 
     def check(t) -> None:
         if (

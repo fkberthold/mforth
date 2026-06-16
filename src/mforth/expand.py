@@ -84,16 +84,21 @@ class CellBoundaryError(Exception):
 # ``Macro`` (so B1's inliner lowers it to a literal push on both backends).
 # Otherwise a :class:`CellBoundaryError` is raised naming the offending word.
 #
-# Two cooperating entry points:
-#   * ``register_defining_words`` — called from ``resolve`` BEFORE its
-#     existence check. Detects defining words, stamps each child into a
-#     ``Macro`` in the dictionary (raising CellBoundaryError as needed) and
-#     returns the set of names ``resolve`` must tolerate (the defining-word
-#     names + the meta-words CREATE/,/DOES>) so the check passes.
-#   * the new clause inside ``expand`` — drops the (now compile-time-consumed)
-#     defining-word definitions and child-invocation term sequences from the
-#     program, leaving only the child Macro *references*, which the B1 inliner
-#     turns into literal pushes.
+# ``expand`` is THE single meta-elimination seam (design D1/D12): everything
+# below runs there, between ``resolve`` and ``stackcheck``. Three cooperating
+# entry points:
+#   * ``collect_tolerated_names`` — called from ``resolve`` (tolerance only).
+#     A pure NAME walk: returns the defining-word names + their child names +
+#     the meta-words CREATE/,/DOES> so ``resolve``'s existence check passes for
+#     a not-yet-expanded program. It does NOT stamp, mutate, or raise.
+#   * ``register_defining_words`` — called from ``expand``. Detects defining
+#     words, stamps each child into a ``Macro`` in the dictionary (raising
+#     CellBoundaryError as needed).
+#   * ``strip_defining_words_in_place`` — called from ``expand`` right after
+#     registration. Drops the (now compile-time-consumed) defining-word
+#     definitions and child-invocation term sequences from the program, and
+#     inlines stamped-child *references* to their literal bodies, which the B1
+#     inliner then carries through to literal pushes.
 # ===========================================================================
 
 
@@ -537,24 +542,86 @@ def _stamp_invocations_in_terms(
         i += 1
 
 
+def _collect_child_names_in_terms(
+    terms: list,
+    defining_words: "dict[str, _DefiningWord]",
+    children: "set[str]",
+) -> None:
+    """Scan ``terms`` for ``<args> DEFWORD CHILD`` invocation sequences and
+    record each CHILD name (lowercased) in ``children``. Recurses into
+    control-flow bodies. This is a NAME-ONLY walk: it neither stamps a
+    ``Macro`` nor evaluates the CREATE/DOES> phases, so it can never raise a
+    :class:`CellBoundaryError` (that is :func:`register_defining_words`'s job,
+    inside ``expand``)."""
+    i = 0
+    n = len(terms)
+    while i < n:
+        term = terms[i]
+        if isinstance(term, WordCall) and term.name.lower() in defining_words:
+            # The child name is the WordCall immediately after the defword
+            # (if present — a malformed invocation is diagnosed later, in
+            # ``register_defining_words``, not here).
+            if i + 1 < n and isinstance(terms[i + 1], WordCall):
+                children.add(terms[i + 1].name.lower())
+        if isinstance(term, IfThen):
+            _collect_child_names_in_terms(term.then_body, defining_words, children)
+            _collect_child_names_in_terms(term.else_body, defining_words, children)
+        elif isinstance(term, Begin):
+            _collect_child_names_in_terms(term.body, defining_words, children)
+            _collect_child_names_in_terms(term.cond_body, defining_words, children)
+        elif isinstance(term, DoLoop):
+            _collect_child_names_in_terms(term.body, defining_words, children)
+        i += 1
+
+
+def collect_tolerated_names(program: Program) -> "set[str]":
+    """Return the set of names ``resolve``'s existence check must TOLERATE for a
+    program that uses CREATE/,/DOES> defining words, WITHOUT stamping or
+    transforming anything.
+
+    The tolerated set is: the meta-words ``CREATE`` / ``,`` / ``DOES>`` (which
+    only ever live inside a defining word's body), every defining-word name, and
+    every stamped-child name (the word immediately following a defining-word
+    call). This is purely a name walk — it does NOT register ``Macro`` entries,
+    does NOT mutate ``program``, and NEVER raises :class:`CellBoundaryError`. The
+    actual stamp+strip happens in :func:`expand` (the single meta-elimination
+    seam, design D1/D12). ``resolve`` calls this so its WordCall existence check
+    passes for a not-yet-expanded program.
+    """
+    defining_words = find_defining_words(program)
+    if not defining_words:
+        return set()
+
+    tolerated: set[str] = {_CREATE, _COMMA, _DOES}
+    tolerated.update(defining_words.keys())
+
+    children: set[str] = set()
+    _collect_child_names_in_terms(program.main, defining_words, children)
+    for defn in program.definitions:
+        if defn.name.lower() in defining_words:
+            continue  # the defining word's own body is meta — skip it
+        _collect_child_names_in_terms(defn.body, defining_words, children)
+    tolerated.update(children)
+    return tolerated
+
+
 def register_defining_words(
     program: Program, dictionary: "Dictionary"
 ) -> "set[str]":
-    """Detect defining words, stamp each child invocation into a ``Macro`` in
-    ``dictionary``, and return the set of names ``resolve``'s existence check
-    must tolerate.
+    """Detect defining words and stamp each child invocation into a ``Macro``
+    in ``dictionary``; also return the set of names the existence check must
+    tolerate (the defining-word names + the meta-words CREATE/,/DOES>).
 
-    Called from :func:`mforth.dictionary.resolve` BEFORE its WordCall
-    existence check, so the stamped child references resolve to ``Macro``
-    entries and the meta-words ``CREATE`` / ``,`` / ``DOES>`` (which only ever
-    live inside a defining word's body) are skipped. Raises
-    :class:`CellBoundaryError` on a boundary-crossing child (D5).
+    Called from :func:`expand` (the single meta-elimination seam, design
+    D1/D12) BEFORE :func:`strip_defining_words_in_place`, so the stamped child
+    references resolve to ``Macro`` entries. ``resolve`` itself only TOLERATES
+    these names (via :func:`collect_tolerated_names`); the stamping that can
+    raise :class:`CellBoundaryError` on a boundary-crossing child (D5) lives
+    here, inside ``expand``.
 
     The set of stamped child names is recorded on the dictionary
     (``_stamped_children``) so :func:`strip_defining_words_in_place` can inline
-    those child *references* to their literal bodies — needed by any consumer
-    that runs ``stackcheck``/``emit`` directly off ``resolve`` without
-    re-threading through ``expand`` (e.g. the equivalence harness).
+    those child *references* to their literal bodies.
     """
     defining_words = find_defining_words(program)
     if not defining_words:
@@ -594,11 +661,10 @@ def _strip_invocations_in_terms(
     invocation sequence removed (it was fully consumed at compile time) and
     (b) every stamped-child *reference* replaced by its cell-free literal body.
 
-    Inlining the child references here (rather than relying solely on the
-    general macro inliner in :func:`expand`) means a consumer that runs
-    ``stackcheck``/``emit`` straight off ``resolve`` — without re-threading the
-    program through ``expand`` (the equivalence harness) — also sees only
-    literals, so the REPL ↔ mlog property holds on both paths."""
+    Inlining the child references here (in addition to the general macro
+    inliner in :func:`expand`) keeps the strip+inline self-contained, so the
+    stamped child Macros and the CREATE/,/DOES> meta-words never survive past
+    this seam regardless of the surviving inliner pass."""
     out: list = []
     i = 0
     n = len(terms)
@@ -674,17 +740,14 @@ def strip_defining_words_in_place(
     """Mutate ``program`` IN PLACE: drop every defining-word definition, strip
     every child-invocation sequence, and inline every stamped-child reference
     to its cell-free literal body. The stamped child ``Macro``s + the set of
-    stamped child names were recorded on ``dictionary`` by
-    :func:`register_defining_words`.
+    stamped child names must already have been recorded on ``dictionary`` by
+    :func:`register_defining_words` (``expand`` calls them in that order).
 
-    Done in place (rather than returning a new ``Program``) so that callers who
-    hold the program by reference and run their OWN pipeline after ``resolve``
-    (e.g. the equivalence harness ``parse → resolve → stackcheck → emit``, which
-    does not re-thread the program through ``expand``) see the transformed
-    program at ``stackcheck`` time. ``CREATE`` / ``,`` / ``DOES>`` and the
-    stamped child Macros therefore never reach stackcheck or a backend.
-    Idempotent: a second call is a no-op (the defining words are already
-    gone)."""
+    Called from :func:`expand` (the single meta-elimination seam, design
+    D1/D12). Mutating in place — rather than returning a new ``Program`` — keeps
+    ``expand``'s phase-0a self-contained: ``CREATE`` / ``,`` / ``DOES>`` and the
+    stamped child Macros never reach ``stackcheck`` or a backend. Idempotent: a
+    second call is a no-op (the defining words are already gone)."""
     defining_words = find_defining_words(program)
     if not defining_words:
         return
@@ -899,14 +962,20 @@ def expand(program: Program, dictionary: "Dictionary") -> Program:
     """
     from mforth.parse import Definition
 
-    # Phase 0a — CREATE/,/DOES> defining words (bead mforth-7h1.2). Drop the
-    # defining-word definitions and the (compile-time-consumed) child
-    # invocation sequences; the stamped child Macros were already registered
-    # into the dictionary by ``register_defining_words`` (called from resolve),
-    # so the surviving child references are lowered by the macro inliner below.
-    # ``resolve`` already performed this strip in place — this call is the
-    # idempotent safety net for callers that hand ``expand`` an un-stripped
-    # program directly.
+    # Phase 0a — CREATE/,/DOES> defining words (bead mforth-7h1.2). ``expand``
+    # is THE single meta-elimination seam (design D1/D12): ``resolve`` only
+    # TOLERATES the meta-words, it does not stamp. So expand is self-sufficient
+    # here — it (1) stamps each child invocation into a ``Macro`` in the
+    # dictionary, raising ``CellBoundaryError`` (D5) on a boundary-crossing
+    # child, then (2) strips the defining-word definitions + the
+    # (compile-time-consumed) child-invocation sequences from the program (and
+    # inlines stamped-child references to their cell-free literal bodies),
+    # leaving the surviving child references for the macro inliner below.
+    # Idempotent: ``register_defining_words`` re-derives the stamps and
+    # ``strip_defining_words_in_place`` is a no-op once the defining words are
+    # already gone, so a caller that hands ``expand`` an already-stamped program
+    # is handled safely too.
+    register_defining_words(program, dictionary)
     strip_defining_words_in_place(program, dictionary)
 
     # Expand main
@@ -931,6 +1000,7 @@ __all__ = [
     "CellBoundaryError",
     "ExpandError",
     "PurityError",
+    "collect_tolerated_names",
     "expand",
     "find_defining_words",
     "register_defining_words",
