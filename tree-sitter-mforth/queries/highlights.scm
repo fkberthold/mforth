@@ -25,6 +25,19 @@
 (definition (semicolon) @keyword)
 (definition name: (definition_name) @function)
 
+; Macro definitions: `MACRO: name body ;`. The opener and the shared `;`
+; terminator are keywords; the name is the macro being defined (a function-
+; like, compile-time word). Mirrors the colon-definition coloring above.
+(macro_definition (macro_colon) @keyword)
+(macro_definition (semicolon) @keyword)
+(macro_definition name: (definition_name) @function)
+
+; Defining-word meta-words: `CREATE` and `DOES>`. These structure the
+; `: CONSTANT CREATE , DOES> @ ;` defining-word surface; color them as
+; keywords wherever they appear (the LSP refines surrounding semantics).
+(create) @keyword
+(does) @keyword
+
 ; ---- Words — classified by name -------------------------------------------
 ;
 ; Control-flow keywords. Match on case-insensitive name (Forth tradition).

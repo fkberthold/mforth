@@ -52,9 +52,12 @@ module.exports = grammar({
     _term: ($) =>
       choice(
         $.definition,
+        $.macro_definition,
         $.block_comment,
         $.string_literal,
         $.number,
+        $.create,
+        $.does,
         $.word,
       ),
 
@@ -83,7 +86,55 @@ module.exports = grammar({
 
     // The first WORD after `:` is the definition name. Distinct node so
     // highlights.scm can color it `@function` instead of `@variable`.
+    // Shared by `:`, `MACRO:`, and (at the use site) defining words.
     definition_name: (_) => /[^\s:;]\S*/,
+
+    // ---- Macro definitions -------------------------------------------------
+    //
+    // `MACRO: name body... ;` — a compile-time term-substitution macro
+    // (bead mforth-7h1.3). Mirrors `: name body ;` exactly, but the opener is
+    // the standalone word `MACRO:` (case-insensitive, matching the Python
+    // parser's `tok.text.upper() == "MACRO:"`). It reuses the same `;`
+    // terminator and `definition_name` node as a colon definition. The mforth
+    // Python parser is the source of truth for semantic rules (no nesting);
+    // tree-sitter only needs the shape so editors get highlight + fold.
+    macro_definition: ($) =>
+      seq(
+        field("macro", $.macro_colon),
+        field("name", $.definition_name),
+        field("body", repeat($._term)),
+        field("semicolon", $.semicolon),
+      ),
+
+    // Standalone `MACRO:` opener. Uses DEFAULT token precedence (like `colon`
+    // and `semicolon`) so tree-sitter's longest-match rule governs: a glued
+    // form like `MACRO:x` is LONGER and lexes as the generic `word`, while
+    // standalone `MACRO:` ties on length and the parser context selects the
+    // keyword. (Explicit `token(prec(N))` would WRONGLY win even on the
+    // shorter `MACRO:` prefix of `MACRO:x` — tree-sitter prefers a
+    // higher-precedence token over a longer one, which we do NOT want here.)
+    // Case-insensitive to match the parser's case-folding.
+    macro_colon: (_) => token(/[Mm][Aa][Cc][Rr][Oo]:/),
+
+    // ---- Defining words (CREATE / DOES>) -----------------------------------
+    //
+    // `CREATE` and `DOES>` are the meta-words of the `: CONSTANT CREATE ,
+    // DOES> @ ;` defining-word surface (beads mforth-7h1.1/7h1.2). In the
+    // Python compiler they are plain words matched case-insensitively
+    // (`term.name.lower() == "create"` / `"does>"`); they only carry meaning
+    // inside a `:` body. tree-sitter cannot know the surrounding structure is
+    // a defining word (that is semantic — the LSP's job), so we surface them
+    // as distinct standalone tokens that highlights.scm can color as keywords,
+    // exactly as `:`/`;` get keyword treatment. They are valid `_term`s so they
+    // parse anywhere a word can appear (inside a `:` body, or bare top level).
+    //
+    // DEFAULT token precedence, like `colon`/`semicolon`/`macro_colon`: a
+    // glued form (`CREATEthing`, `DOES>foo`) is LONGER and lexes as the
+    // generic `word` via longest-match, while standalone `CREATE`/`DOES>`
+    // ties on length and parser context selects the keyword. (See the
+    // `macro_colon` note on why explicit `prec` is wrong here.)
+    create: (_) => token(/[Cc][Rr][Ee][Aa][Tt][Ee]/),
+    does: (_) => token(/[Dd][Oo][Ee][Ss]>/),
 
     // ---- Comments ----------------------------------------------------------
     //
