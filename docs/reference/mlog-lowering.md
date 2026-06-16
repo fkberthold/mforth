@@ -222,6 +222,70 @@ This is the v1 strategy. Inlining always wins on speed; the
 `@counter`-trick subroutine emission is held in reserve as a v2
 size-only fallback (see "Forward pointer" below).
 
+## Stamped defining words (`CREATE` / `DOES>`)
+
+The meta layer — `CREATE`, `,`, `DOES>`, source-defined `CONSTANT`,
+and `MACRO:` — emits **nothing of its own**. It is eliminated by the
+phase-0 `expand` pass (`expand.py`) that runs *between* `resolve` and
+`stackcheck`, so the instruction stream this page describes never
+contains a meta-word. The lowering of the meta layer is therefore
+entirely "what the residual literals lower to", and that residual is a
+**literal push** — there is **no mlog memory cell** in the output.
+
+### How stamping reaches a literal push
+
+A `:` definition shaped `CREATE <create-phase> DOES> <does-body>` is a
+*defining word*. When it is called with compile-time-constant arguments
+(`76 CONSTANT TROMBONES`), `expand` (`_stamp_child` in `expand.py`):
+
+1. Runs the **create-phase** — one `,` consumes one preceding constant
+   into the child's **immutable field** (a compile-time list, *not* a
+   runtime cell).
+2. **Partial-evaluates** the `DOES>` body against that field, symbolically.
+   `@` against the field base folds to the constant value; pure
+   arithmetic / comparison / logical ops and stack-juggle words fold
+   too (using the same float-`/`, 0/1-comparison, int-bitwise rules as
+   `fold.py` and the host primitives).
+3. If the residual is **cell-free** (all constants — no leftover field
+   address, no store, no runtime fetch), registers the child as a stamped
+   `Macro` whose body is the residual literal terms.
+
+The general macro inliner then carries each *use* of the child through to
+its literal body, and the literal lowers per the **Literals** table at the
+top of this page. So:
+
+| Forth (with `: CONSTANT CREATE , DOES> @ ;`) | mlog | Notes |
+|-------|------|-------|
+| `76 CONSTANT TROMBONES` then `TROMBONES`        | `set s<i> 76` | Stamps to a literal push. The `CONSTANT` call site itself emits nothing. |
+| `76 CONSTANT TROMBONES` then `TROMBONES PRINT`  | `print 76`    | The stamped literal then takes the literal-lift fast path (`<lit> PRINT`). |
+| `: DOUBLED CREATE , DOES> @ 2 * ;` then `21 DOUBLED X` then `X PRINT` | `print 42` | `DOES>` body `@ 2 *` partial-evaluated against field `[21]` → constant `42` → literal push, then lifted. |
+
+**No memory cell is emitted.** There is no `read`/`write` instruction, no
+`@`-fetch instruction, and no allocated mlog cell variable — the field is
+consumed entirely at compile time. This is the design D5 cell-free
+boundary: const + immutable data folds to a literal; the in-game value
+*conceptually* lives in a per-child field that `DOES> @` reads, but mforth
+**partial-evaluates that fetch away** rather than materialising the cell.
+The stamped output is byte-equivalent under the REPL ↔ mlog property at O0.
+
+### When stamping is rejected (`CellBoundaryError`)
+
+A `DOES>` body that would need a **mutable** or **runtime-computed**
+per-instance cell crosses the v1 cell-free boundary. `expand` raises
+`CellBoundaryError` (naming the defining word and child) — a clean compile
+error, **never** a silent miscompile and **never** a lowering to a memory
+cell. Triggers: a `!` store; a runtime / runtime-indexed `@` fetch; a
+create-phase op other than `,`; a non-constant stamp argument; or a
+residual that does not reduce to a constant (e.g. a bare field address left
+on the stack). Those cells re-enter only in v2.
+
+`MACRO:` bodies and `DOES>` bodies are additionally **purity**-checked: a
+world-sink call (`PRINT` / `PRINTFLUSH` / `SENSOR` / `WAIT` / `GETLINK` /
+`CONTROL-*`) or a `@` read of a `VARIABLE` raises `PurityError` (D14). The
+check is tag-driven on the `"mindustry"` / `"mindustry-control"` families,
+so a new world-sink is caught regardless of its name. A cyclic macro raises
+`ExpandError`. None of these reach a backend.
+
 ## Finalize-pass transforms
 
 The emit pass produces a flat `list[MlogInstr]` of
