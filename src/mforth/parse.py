@@ -130,6 +130,11 @@ class Definition:
 class Program:
     definitions: list = field(default_factory=list)
     main: list = field(default_factory=list)
+    # User-defined macros from `MACRO: name body ;` (bead mforth-7h1.3).
+    # Parsed as compile-time meta-words; registered into the dictionary by
+    # ``resolve`` so ``expand`` inlines them before stackcheck/codegen run.
+    # Never emitted as runtime code — analogous to Definition but for macros.
+    macros: list = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -183,17 +188,23 @@ class _Parser:
     def parse_program(self) -> Program:
         definitions: list[Definition] = []
         main: list[Term] = []
+        macros: list = []
         while self._peek().kind != TokenKind.EOF:
             tok = self._peek()
             if tok.kind == TokenKind.COLON:
                 definitions.append(self._parse_definition())
+            elif (
+                tok.kind == TokenKind.WORD
+                and tok.text.upper() == "MACRO:"
+            ):
+                macros.append(self._parse_macro())
             elif tok.kind == TokenKind.EFFECT_COMMENT:
                 # Top-level effect-shaped comments aren't attached to
                 # anything — they're just comments and get skipped.
                 self._advance()
             else:
                 main.append(self._parse_term())
-        return Program(definitions=definitions, main=main)
+        return Program(definitions=definitions, main=main, macros=macros)
 
     # --- definitions ------------------------------------------------------
 
@@ -254,6 +265,41 @@ class _Parser:
             src_loc=_loc(colon),
             declared_effect=declared_effect,
         )
+
+    # --- MACRO: definitions -----------------------------------------------
+
+    def _parse_macro(self):
+        """Parse a ``MACRO: name <body terms> ;`` definition.
+
+        Analogous to ``_parse_definition`` but creates a ``Macro`` (a
+        compile-time term-substitution) rather than a runtime ``Definition``.
+        The parser captures the body as a flat list of Terms and defers
+        registration into the dictionary to ``resolve`` so the single
+        meta-elimination seam (``expand``) can inline all uses.
+        """
+        from mforth.dictionary import Macro
+
+        macro_tok = self._advance()  # consume the 'MACRO:' word
+        name_tok = self._peek()
+        if name_tok.kind != TokenKind.WORD:
+            raise ParseError(
+                "expected macro name after 'MACRO:'",
+                self.file, macro_tok.line, macro_tok.col,
+            )
+        self._advance()  # consume macro name
+        body: list = []
+        while True:
+            tok = self._peek()
+            if tok.kind == TokenKind.EOF:
+                raise ParseError(
+                    "unterminated 'MACRO:' definition (expected ';' before EOF)",
+                    self.file, macro_tok.line, macro_tok.col,
+                )
+            if tok.kind == TokenKind.SEMICOLON:
+                self._advance()
+                break
+            body.append(self._parse_term())
+        return Macro(name=name_tok.text, body=body)
 
     # --- terms ------------------------------------------------------------
 

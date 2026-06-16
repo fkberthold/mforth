@@ -760,6 +760,14 @@ def resolve(program: Program, dictionary: Optional[Dictionary] = None) -> Dictio
     for var in _collect_variable_declarations(program):
         d.add_variable(var)
 
+    # Register user-defined macros (bead mforth-7h1.3: ``MACRO: name body ;``
+    # parsed into ``program.macros``). Macros must be registered BEFORE the
+    # wordcall existence walk so a macro name used in main or in a definition
+    # body resolves correctly. Later macro definitions replace earlier ones of
+    # the same name (Forth redefinition semantics).
+    for macro in getattr(program, "macros", []):
+        d._entries[macro.name.lower()] = macro  # noqa: SLF001
+
     # Phase 0a — CREATE/,/DOES> defining-word TOLERANCE (bead mforth-7h1.2).
     # ``resolve``'s contract is to build the dictionary + check resolution; it
     # must NOT transform/mutate the program and must NOT compute stamps or raise
@@ -784,6 +792,9 @@ def resolve(program: Program, dictionary: Optional[Dictionary] = None) -> Dictio
     _walk_terms(program.main, check)
     for defn in program.definitions:
         _walk_terms(defn.body, check)
+    # Walk macro bodies too — an unresolved word inside a macro is an error.
+    for macro in getattr(program, "macros", []):
+        _walk_terms(macro.body, check)
 
     return d
 
