@@ -1,5 +1,6 @@
-"""Chapter 13-15 self-validation — bead mforth-roz.6 (Part II control loop,
-capstone, where-next).
+"""Chapter 15-17 self-validation — bead mforth-roz.6 (Part II control loop,
+capstone, where-next; renumbered from 13-15 by mforth-7h1.5 when the
+meta-layer chapters joined the end of Part I).
 
 Two correctness gates, mirroring the tutorial's no-rot policy
 (design drawer ``drawer_mforth_decisions_00f669348c36c8702bb88dcc`` §3):
@@ -10,7 +11,7 @@ Two correctness gates, mirroring the tutorial's no-rot policy
    tracks; this module pins the sim-102 track explicitly so a regression
    in this batch is diagnosable here, next to the chapters it backs.
 
-2. **Every ``forth`` fence in chapters 13-15 compiles + runs.** The prose
+2. **Every ``forth`` fence in chapters 15-17 compiles + runs.** The prose
    is the human source of truth; this test is the machine mirror that
    stops a snippet from drifting into something that no longer runs. Each
    fence is executed through the real host
@@ -40,12 +41,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 LEARN_DIR = REPO_ROOT / "docs" / "tutorials" / "learn-forth"
 
 CHAPTER_FILES = [
-    LEARN_DIR / "13-control-loop.md",
-    LEARN_DIR / "14-capstone.md",
-    LEARN_DIR / "15-where-next.md",
+    LEARN_DIR / "15-control-loop.md",
+    LEARN_DIR / "16-capstone.md",
+    LEARN_DIR / "17-where-next.md",
 ]
 
-# Every block name any chapter-13/14/15 forth fence references. Declared
+# Every block name any chapter-15/16/17 forth fence references. Declared
 # all-at-once so a single sidecar resolves every fence; a fence that uses
 # none of these just ignores the extra links.
 _SUPERSET_SIDECAR = """\
@@ -116,7 +117,7 @@ def test_sim_102_reference_solution_passes(ex_id, tmp_path):
 
 def _iter_fences():
     """Yield ``(chapter_name, fence_index, fence_source)`` for every
-    ``forth`` fence across chapters 13-15."""
+    ``forth`` fence across chapters 15-17."""
     for md in CHAPTER_FILES:
         assert md.exists(), f"missing chapter file: {md}"
         text = md.read_text(encoding="utf-8")
@@ -131,9 +132,9 @@ def test_chapters_have_forth_fences():
     """Each of the three chapters ships at least one runnable forth fence
     (guards against an empty-extraction false-green)."""
     names = {name for name, _, _ in _FENCES}
-    assert "13-control-loop.md" in names
-    assert "14-capstone.md" in names
-    assert "15-where-next.md" in names
+    assert "15-control-loop.md" in names
+    assert "16-capstone.md" in names
+    assert "17-where-next.md" in names
 
 
 @pytest.mark.parametrize(

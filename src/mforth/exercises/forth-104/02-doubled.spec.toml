@@ -1,0 +1,10 @@
+# Exercise spec — bundled package data (bead mforth-7h1.5, ch10 defining words).
+# See ../forth-101/01-double.spec.toml / src/mforth/exercises/__init__.py
+# for the full schema. Part-I exercises are abstract: no simulator sidecar.
+id = "forth-104/02-doubled"
+prompt = "Define a defining word `DOUBLED` whose children push TWICE their stored value (`CREATE , DOES> @ 2 *`). Then stamp a child `x` from 21, so `x` pushes 42."
+hint = "The body `DOES> @ 2 *` fetches the field and multiplies by 2. Define it as `: DOUBLED  CREATE , DOES> @ 2 * ;`, then `21 DOUBLED x`."
+
+[[case]]
+driver = "x ."
+expect = ["42"]

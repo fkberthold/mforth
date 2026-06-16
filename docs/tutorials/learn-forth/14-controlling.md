@@ -1,11 +1,11 @@
-# 12. Acting on the world
+# 14. Acting on the world
 
 > **You will:** turn a decision into an action with `CONTROL-ENABLED`,
 > meet its sibling control words, and write a complete sense → decide →
 > act word that flips a switch based on what a vault holds. About ten
 > minutes.
 >
-> **You will need:** [chapter 11](./11-sensing.md) (`SENSOR` and
+> **You will need:** [chapter 13](./13-sensing.md) (`SENSOR` and
 > turning readings into flags) and `IF / ELSE / THEN` from
 > [chapter 5](./05-branching.md).
 
@@ -97,7 +97,7 @@ and the same word prints `0` and stops it.
 This is a complete controller. The only thing missing is making it *keep*
 running — sensing, deciding, and acting once per tick, forever. That's a
 real Mindustry processor's auto-loop, and it's the subject of
-[chapter 13, A real control loop](./13-control-loop.md).
+[chapter 15, A real control loop](./15-control-loop.md).
 
 ## Exercises
 
@@ -106,12 +106,12 @@ Write each `.fs` with its `\ @exercise <id>` marker and run
 reveals the answer. Both exercises bundle a sidecar that **seeds the
 vault's readings**, so your word senses real data.
 
-### Exercise 12.1 — `should-run?` ( -- flag )
+### Exercise 14.1 — `should-run?` ( -- flag )
 
 Leave `1` when `vault1` has room (its `@totalItems` is below its
 `@itemCapacity`), else `0` — the flag a miner switch should be set to.
 (The sidecar seeds an `80`-of-`100` vault, so it *has* room and the
-checker expects `1`. This is the *decision* half; exercise 12.2 acts on
+checker expects `1`. This is the *decision* half; exercise 14.2 acts on
 it.)
 
 ```
@@ -126,7 +126,7 @@ mforth check should-run.fs
 ✓ sim-101/05-decide — 1/1 cases pass
 ```
 
-### Exercise 12.2 — `restock` ( -- )
+### Exercise 14.2 — `restock` ( -- )
 
 `SENSOR` `vault1`'s `@totalItems`; if it is empty (`= 0`) print `1` and
 `miner 1 CONTROL-ENABLED`, else print `0` and `miner 0 CONTROL-ENABLED`.
@@ -149,8 +149,8 @@ mforth check restock.fs
 ---
 
 You have now built a controller end to end: read the world, decide, act.
-Next, [chapter 13](./13-control-loop.md) makes it tick — adding `WAIT`
+Next, [chapter 15](./15-control-loop.md) makes it tick — adding `WAIT`
 and leaning on the processor's auto-loop so `restock` runs every tick the
 way it would on a real logic block. After that,
-[chapter 14](./14-capstone.md) is a milestone-checked capstone, and
-[chapter 15](./15-where-next.md) hands you off to compiling for the game.
+[chapter 16](./16-capstone.md) is a milestone-checked capstone, and
+[chapter 17](./17-where-next.md) hands you off to compiling for the game.

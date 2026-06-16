@@ -1,0 +1,14 @@
+# Exercise spec — bundled package data (bead mforth-7h1.5, ch10 defining words).
+# See ../forth-101/01-double.spec.toml / src/mforth/exercises/__init__.py
+# for the full schema. Part-I exercises are abstract: no simulator sidecar.
+id = "forth-104/01-constant"
+prompt = "Define the defining word `CONSTANT` ( value -- ) as `CREATE , DOES> @`, then stamp a constant `answer` holding 42. There is no built-in CONSTANT — you make it."
+hint = "The whole defining word is one line: `: CONSTANT  CREATE , DOES> @ ;`. Then `42 CONSTANT answer` stamps the child; later, `answer` pushes 42."
+
+[[case]]
+driver = "answer ."
+expect = ["42"]
+
+[[case]]
+driver = "answer answer + ."
+expect = ["84"]

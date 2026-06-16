@@ -1,4 +1,4 @@
-# 14 — Capstone: the sorter
+# 16 — Capstone: the sorter
 
 > **You will:** build a complete, real Mindustry controller — a sorter
 > that drains whichever of two piles is larger, and stops when both are
@@ -143,7 +143,7 @@ the `PRINT` in each arm so we can watch what the controller chose.
 ```
 
 `@surge-alloy` and `@blast-compound` are item handles — first-class
-values you push like any number (from [chapter 11](11-sensing.md)).
+values you push like any number (from [chapter 13](13-sensing.md)).
 `unloader <item> CONTROL-CONFIG` tells the unloader which item to pull.
 `NULL` is the source-level literal for mlog's `null`; configuring to it
 clears the selection. This exercise ships a `sidecar` naming the
@@ -168,7 +168,7 @@ mforth check sorter-step.fs
 You now have `sorter-step`: a word that takes two readings and acts. The
 last move is to stop *handing it* the readings and instead **sense** them
 from the world each tick — exactly the sense → decide → act → wait shape
-from [chapter 13](13-control-loop.md):
+from [chapter 15](15-control-loop.md):
 
 ```forth
 \ The sorter as a live controller.
@@ -227,6 +227,6 @@ naming them in order.
 You have the full v1 mforth toolkit now: the stack, words, arithmetic,
 branches, loops, state, output, the simulator, sensing, controlling, and
 the control loop that ties them together. The
-[final chapter](15-where-next.md) shows you how to take a controller
+[final chapter](17-where-next.md) shows you how to take a controller
 like this one out of the simulator and into the game — compiling it to
 paste-ready mlog — and points you at where to go next.

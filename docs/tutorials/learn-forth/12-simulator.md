@@ -1,4 +1,4 @@
-# 10. Meet the simulator
+# 12. Meet the simulator
 
 > **You will:** leave the abstract stack behind and put your first
 > words on a (simulated) Mindustry message block — using `PRINT`,
@@ -20,8 +20,8 @@ still the stack; `IF` still branches; a definition is still a definition.
 What changes is that some words now talk to a **world** — a simulated
 Mindustry processor with blocks wired to it. This chapter introduces that
 world and gets one string onto one block. The next two chapters teach you
-to *read* the world ([chapter 11](./11-sensing.md)) and *act* on it
-([chapter 12](./12-controlling.md)).
+to *read* the world ([chapter 13](./13-sensing.md)) and *act* on it
+([chapter 14](./14-controlling.md)).
 
 ## The MockWorld
 
@@ -105,7 +105,7 @@ cat hello.mlog
 
 You get exactly two mlog instructions — `print "reactor online"` and
 `printflush message1` — paste-ready for a logic processor. (Compiling is
-[chapter 15](./15-where-next.md)'s topic; here it's just a peek.)
+[chapter 17](./17-where-next.md)'s topic; here it's just a peek.)
 
 ## Buffer, then flush: the two-line readout
 
@@ -142,7 +142,7 @@ These two exercises bundle their own sidecar — you don't write a
 `.world.toml`; the checker supplies one that binds `display` to a message
 block.
 
-### Exercise 10.1 — `greet` ( -- )
+### Exercise 12.1 — `greet` ( -- )
 
 `PRINT` the string `online` and flush it to the message block `display`.
 
@@ -158,7 +158,7 @@ mforth check greet.fs
 ✓ sim-101/01-greet — 1/1 cases pass
 ```
 
-### Exercise 10.2 — `readout` ( -- )
+### Exercise 12.2 — `readout` ( -- )
 
 `PRINT` the label `width=`, then `PRINT` the map width `@mapw`, then flush
 to `display`. Remember: two separate `PRINT`s.
@@ -179,7 +179,7 @@ mforth check readout.fs
 
 You can now get text onto a block. But a controller that only *writes*
 is half a controller — the interesting programs *react*. Next:
-[chapter 11, Reading the world](./11-sensing.md), where `SENSOR` pulls a
+[chapter 13, Reading the world](./13-sensing.md), where `SENSOR` pulls a
 block's properties onto the stack so your `IF`s have something real to
 branch on.
 

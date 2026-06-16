@@ -21,18 +21,25 @@ _REPO = Path(__file__).resolve().parents[2]
 _LEARN = _REPO / "docs" / "tutorials" / "learn-forth"
 _MKDOCS = _REPO / "mkdocs.yml"
 
-# The 15 chapters, in order, plus the landing page.
+# The 17 chapters, in order, plus the landing page. Part I now closes
+# with the meta layer (ch10 defining words, ch11 macros — bead
+# mforth-7h1.5), so the simulator chapters renumbered 10-15 -> 12-17.
 _CHAPTERS = [
     "01-stack.md", "02-juggling.md", "03-defining.md",
     "04-arithmetic.md", "05-branching.md", "06-looping.md",
     "07-state.md", "08-output.md", "09-factoring.md",
-    "10-simulator.md", "11-sensing.md", "12-controlling.md",
-    "13-control-loop.md", "14-capstone.md", "15-where-next.md",
+    "10-defining-words.md", "11-macros.md",
+    "12-simulator.md", "13-sensing.md", "14-controlling.md",
+    "15-control-loop.md", "16-capstone.md", "17-where-next.md",
 ]
 _PAGES = ["index.md", *_CHAPTERS]
 
-# Exercise tracks the tutorial is built on.
-_TRACKS = ["forth-101", "forth-102", "forth-103", "sim-101", "sim-102"]
+# Exercise tracks the tutorial is built on. forth-104 (defining words)
+# and forth-105 (macros) are the ch10/ch11 meta-layer tracks.
+_TRACKS = [
+    "forth-101", "forth-102", "forth-103", "forth-104", "forth-105",
+    "sim-101", "sim-102",
+]
 
 
 def test_all_chapter_pages_exist() -> None:

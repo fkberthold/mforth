@@ -1,5 +1,6 @@
 """Self-validation gate for the "Learn Forth with mforth" Part II
-chapters 10-12 (bead mforth-roz.5).
+chapters 12-14 (bead mforth-roz.5; renumbered from 10-12 by
+mforth-7h1.5 when the meta-layer chapters joined the end of Part I).
 
 Two correctness gates keep these tutorial chapters from rotting — the
 same pair the design drawer (``drawer_mforth_decisions_00f669348c36c8702bb88dcc``)
@@ -15,7 +16,7 @@ mandates for every chapter batch:
    a typo'd driver) fails this test rather than shipping a broken
    exercise to a learner.
 
-2. **Every ```forth fence in chapters 10-12 compiles + runs.** A small
+2. **Every ```forth fence in chapters 12-14 compiles + runs.** A small
    extractor pulls each fenced ``forth`` block out of the three chapter
    pages and runs it once through the real host
    :class:`~mforth.backend.runner.Runner` (lex → parse → resolve →
@@ -50,9 +51,9 @@ from mforth.cli_check import run_check
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _CHAPTER_DIR = _REPO_ROOT / "docs" / "tutorials" / "learn-forth"
 _CHAPTERS = [
-    _CHAPTER_DIR / "10-simulator.md",
-    _CHAPTER_DIR / "11-sensing.md",
-    _CHAPTER_DIR / "12-controlling.md",
+    _CHAPTER_DIR / "12-simulator.md",
+    _CHAPTER_DIR / "13-sensing.md",
+    _CHAPTER_DIR / "14-controlling.md",
 ]
 
 _TRACK = "sim-101"

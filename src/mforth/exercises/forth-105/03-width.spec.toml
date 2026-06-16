@@ -1,0 +1,14 @@
+# Exercise spec — bundled package data (bead mforth-7h1.5, ch11 macros).
+# See ../forth-101/01-double.spec.toml / src/mforth/exercises/__init__.py
+# for the full schema. Part-I exercises are abstract: no simulator sidecar.
+id = "forth-105/03-width"
+prompt = "Define a macro `WIDTH` that stands for the literal 40 — a named constant the macro way. A one-line macro is the lightest possible named literal."
+hint = "`MACRO: WIDTH 40 ;`. Then `WIDTH` compiles to `40` everywhere it appears, so `WIDTH 2 /` is `40 2 /`."
+
+[[case]]
+driver = "WIDTH ."
+expect = ["40"]
+
+[[case]]
+driver = "WIDTH 2 / ."
+expect = ["20"]

@@ -1,0 +1,14 @@
+# Exercise spec — bundled package data (bead mforth-7h1.5, ch11 macros).
+# See ../forth-101/01-double.spec.toml / src/mforth/exercises/__init__.py
+# for the full schema. Part-I exercises are abstract: no simulator sidecar.
+id = "forth-105/01-macro"
+prompt = "Define a macro `bump` that stands for `1 +`, so naming `bump` adds one to the value beneath it. Use `MACRO: name ... ;`."
+hint = "A macro is substituted, not called: `MACRO: bump 1 + ;`. Then `5 bump` compiles as `5 1 +`."
+
+[[case]]
+driver = "5 bump ."
+expect = ["6"]
+
+[[case]]
+driver = "0 bump bump ."
+expect = ["2"]
