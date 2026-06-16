@@ -992,6 +992,13 @@ def expand(program: Program, dictionary: "Dictionary") -> Program:
             declared_effect=defn.declared_effect,
         )
         expanded_defs.append(new_defn)
+        # Update the dictionary entry so the host executor and any other
+        # dictionary-driven consumer sees the expanded (macro-free) body.
+        # Without this, a `:` definition that calls a macro would keep its
+        # un-expanded body in the dictionary and the host backend would try
+        # to run the macro call at runtime — reaching an unknown-type branch
+        # (bead mforth-7h1.3).
+        dictionary._entries[defn.name.lower()] = new_defn  # noqa: SLF001
 
     return Program(definitions=expanded_defs, main=expanded_main)
 
