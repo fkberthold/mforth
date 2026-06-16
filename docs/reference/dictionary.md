@@ -187,6 +187,75 @@ positions with `0`.
 
 ---
 
+## Meta layer (defining words + macros)
+
+A small, **compile-time-only** meta surface (beads mforth-7h1.1 / .2 / .3).
+None of these words exist at runtime: they are eliminated by the phase-0
+`expand` pass that runs between `resolve` and `stackcheck`. After `expand`,
+the AST that reaches `stackcheck` and both backends contains **zero**
+meta-words — so the meta layer never perturbs the static stack analysis or
+the REPL ↔ mlog equivalence property. Restricted shape is what makes that
+possible; this is *not* ANS Forth's open-ended meta-compilation. See
+[The meta layer](../explanation/meta-layer.md) for the design rationale.
+
+`CREATE`, `,`, and `DOES>` are **not** standalone words you call from
+`main` — they only ever appear **inside a `:` definition's body**, where
+together they describe a *defining word*. Calling that defining word at
+compile time **stamps** a new child word. `CONSTANT` is itself *defined in
+source* this way (it is not a built-in):
+
+```forth
+: CONSTANT CREATE , DOES> @ ;
+76 CONSTANT TROMBONES   \ stamps TROMBONES → a literal push of 76
+```
+
+| Name | Where | Semantic | Lowering |
+| --- | --- | --- | --- |
+| `CREATE` | inside a `:` body | opens the create-phase of a defining word; marks the start of the per-child immutable field | *(compile-time only; no instruction)* |
+| `,` (comma) | create-phase | consumes one preceding compile-time-constant value into the child's immutable field (one field slot per `,`) | *(compile-time only; no instruction)* |
+| `DOES>` | inside a `:` body | begins the child-behaviour template; partial-evaluated against the field at stamp time | *(compile-time only; no instruction)* |
+| `CONSTANT` | source-defined | the canonical defining word `: CONSTANT CREATE , DOES> @ ;` | child stamps to a literal push |
+| `MACRO: name … ;` | top level | declare a user macro (pure compile-time word); each call site is replaced by the macro body before stackcheck | inlines to the body's lowering |
+
+There is **no built-in `CONSTANT`** — `: CONSTANT CREATE , DOES> @ ;` must
+appear in your source (or a prelude) before you use it. The dictionary
+ships `CREATE`, `,`, and `DOES>` only; `CONSTANT` is the textbook *user*
+defining word the meta surface is designed to express.
+
+**Stamping (D4 / D5).** When a defining word is called with
+compile-time-constant arguments, the create-phase builds an immutable
+field and the `DOES>` body is **partial-evaluated** against it. If the
+residual is cell-free — pure literals, no leftover field address, no store,
+no runtime-indexed fetch — the child is registered as a stamped macro whose
+body is those literals, so it lowers to a bare **literal push, with no mlog
+memory cell** (see [mlog lowering → Stamped defining words](mlog-lowering.md#stamped-defining-words-create-does)).
+The `DOES>` body may use pure arithmetic and stack juggling, so the general
+stamper goes beyond `CONSTANT`:
+
+```forth
+: DOUBLED CREATE , DOES> @ 2 * ;
+21 DOUBLED X            \ DOES> body `@ 2 *` folds against 21 → X pushes 42
+```
+
+**Rejected, never miscompiled (D5).** A `DOES>` body that needs a *mutable*
+or *runtime-computed* per-instance cell crosses the v1 cell-free boundary
+and is a clean compile error (`CellBoundaryError`) naming the offending
+defining word — `!` (store), a runtime `@` fetch, a non-constant argument,
+a create-phase op other than `,`, or a residual that does not reduce to a
+constant. It is never silently lowered to a memory cell.
+
+**Macro purity (D14).** A `MACRO:` body (and a `DOES>` body) is checked
+for **purity**: it may not call a world-sink primitive (`PRINT`,
+`PRINTFLUSH`, `SENSOR`, `WAIT`, `GETLINK`, the `CONTROL-*` family) or read
+runtime state via `@` on a `VARIABLE`. A violation is a compile error
+(`PurityError`) naming the offending primitive. The check is **tag-driven**
+(it keys off the `"mindustry"` / `"mindustry-control"` family tags), so a
+new world-sink registered under any name is caught automatically. Cyclic
+macro expansion (`A → B → A`, including through a control-flow body) raises
+`ExpandError`.
+
+---
+
 ## Mindustry `@`-identifiers
 
 Every `@`-prefixed name mforth recognizes pushes a single value
@@ -455,9 +524,13 @@ are read-only in v1 — the `CONTROL-*` words above are the write path.
 
 Naming the deliberate absences is itself part of the reference surface.
 
-- **`POSTPONE`, `IMMEDIATE`, `DOES>`, `EXECUTE`** — meta-compilation. The
+- **`POSTPONE`, `IMMEDIATE`, `EXECUTE`** — open-ended meta-compilation. The
   pragmatic-Forth dialect choice rules these out so static stack analysis
   stays decidable. See [Why mforth](../explanation/why-mforth.md#what-it-gives-up).
+  (`CREATE` / `,` / `DOES>` *are* present, but only in the restricted,
+  compile-time-only, cell-free form described under
+  [Meta layer](#meta-layer-defining-words-macros) — they are eliminated
+  by `expand` and never survive to a backend.)
 - **Memory cells** (`@`/`!` against an addressable cell) — v1 is cell-free.
   `VARIABLE` compiles to a bare mlog variable, not a cell address. v2 reopens
   this with an explicit `--mem=<cell>` flag.

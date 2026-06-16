@@ -107,3 +107,4 @@ nav:
       - explanation/index.md
       - Why mforth: explanation/why-mforth.md
       - Forth, the mental model: explanation/forth-mental-model.md
+      - The meta layer: explanation/meta-layer.md
