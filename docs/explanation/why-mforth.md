@@ -52,11 +52,19 @@ analyzer — they're all subscribers to the same event stream.
 
 ## What it gives up
 
-**ANS Forth's meta-compilation.** `POSTPONE`, `IMMEDIATE`, `DOES>`,
-and `EXECUTE` make static stack analysis undecidable in general.
-mforth's v1 drops them entirely. You cannot extend the compiler at
-compile time the way ANS lets you. The trade: when you need a new
-abstraction, you factor a new word — never a new meta-word.
+**ANS Forth's *open-ended* meta-compilation.** Arbitrary `POSTPONE` /
+`IMMEDIATE`-style compile-time code, and runtime `EXECUTE`, make static
+stack analysis undecidable in general — so mforth drops those. What it
+keeps is a deliberately *restricted* compile-time layer: hygienic,
+terminating, pure user macros (`MACRO: name … ;`) and defining words
+(`CREATE` / `,` / `DOES>`, e.g. a source-defined `CONSTANT`) whose
+bodies reduce against compile-time-constant data and **stamp to a bare
+literal** — no runtime meta, no cell, still fully statically checkable.
+So you *can* extend the compiler at compile time; you just can't do it
+in a way that breaks the analysis. See [the meta layer](meta-layer.md)
+for the exact re-admission boundary. (Runtime `EXECUTE` / tick is still
+out of v1 — it forces a stack-representation migration, held for a
+later epic.)
 
 **Memory cells in v1.** mlog has memory blocks; mforth v1 has no
 addressable cells. The data stack lives in mlog variables
@@ -82,9 +90,12 @@ idea is under pressure:
 - **"It's fine if the REPL behaves a little differently from the
   compiler."** No — equivalence is the test class. File the
   divergence as a P0 regression.
-- **"Let's add `POSTPONE` / `IMMEDIATE` just for this one word."**
-  Refactor the word instead. Compile-time meta-programming is the
-  thing v1 deliberately ruled out.
+- **"Let's add open-ended `POSTPONE` / `IMMEDIATE` (or runtime
+  `EXECUTE`) just for this one word."** Reach for the *restricted* meta
+  layer first — a `MACRO:` or a `CREATE … DOES>` defining word covers
+  most needs and stays statically analyzable. *Arbitrary* compile-time
+  meta and runtime `EXECUTE` are what v1 rules out; if you truly need
+  them, that's an epic, not a one-word exception.
 - **"We need a memory cell for this v1 demo."** Re-examine. v1
   demos (blink, counter, single-processor controllers) should never
   touch a cell. If they do, the design is leaking out of scope.
