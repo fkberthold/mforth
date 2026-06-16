@@ -1,0 +1,3062 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A pragmatic Forth dialect that compiles to Mindustry's mlog — host REPL, AOT compiler, LSP, and tree-sitter grammar, sharing one analyzer.">
+      
+      
+      
+      
+        <link rel="prev" href="../events/">
+      
+      
+        <link rel="next" href="../optimization-levels/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>mlog lowering - mforth</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#mlog-lowering" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="mforth" class="md-header__button md-logo" aria-label="mforth" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            mforth
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              mlog lowering
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+          <a href="javascript:void(0)" class="md-search__icon md-icon" title="Share" aria-label="Share" data-clipboard data-clipboard-text="" data-md-component="search-share" tabindex="-1">
+            
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9a3 3 0 0 0-3 3 3 3 0 0 0 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.15c-.05.21-.08.43-.08.66 0 1.61 1.31 2.91 2.92 2.91s2.92-1.3 2.92-2.91A2.92 2.92 0 0 0 18 16.08"/></svg>
+          </a>
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/fkberthold/mforth" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../tutorials/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Tutorials
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../how-to/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  How-to
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../explanation/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Explanation
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="mforth" class="md-nav__button md-logo" aria-label="mforth" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    mforth
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/fkberthold/mforth" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../tutorials/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tutorials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../tutorials/learn-forth/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Learn Forth
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2_3" id="__nav_2_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Learn Forth
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/learn-forth/01-stack/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    1. The stack & postfix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/learn-forth/02-juggling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    2. Juggling the stack
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/learn-forth/03-defining/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    3. Defining words
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/learn-forth/04-arithmetic/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    4. Arithmetic & truth
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/learn-forth/05-branching/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    5. Branching
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/learn-forth/06-looping/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    6. Looping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/learn-forth/07-state/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    7. State & variables
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/learn-forth/08-output/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    8. Output
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/learn-forth/09-factoring/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    9. Factoring
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/learn-forth/10-defining-words/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    10. Words that make words
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/learn-forth/11-macros/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    11. Macros
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/learn-forth/12-simulator/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    12. Meet the simulator
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/learn-forth/13-sensing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    13. Reading the world
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/learn-forth/14-controlling/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    14. Acting on the world
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/learn-forth/15-control-loop/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    15. A control loop
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/learn-forth/16-capstone/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    16. Capstone - the sorter
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/learn-forth/17-where-next/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    17. Where next
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/writing-mforth-for-mindustry/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing mforth for Mindustry
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../how-to/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How-to
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    How-to
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/use-with-helix/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use with Helix
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/use-with-nvim/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use with Neovim
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/pin-sidecar-link-by-index/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Pin a sidecar link by index
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/verify-repl-mlog-equivalence/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Verify REPL ↔ mlog equivalence
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../how-to/use-the-web-visualizer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Use the web visualizer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dictionary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dictionary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sidecar-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sidecar schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../events/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Events
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    mlog lowering
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    mlog lowering
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#conventions-used-in-this-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conventions used in this page
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#literals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Literals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arithmetic-comparison-logical" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Arithmetic, comparison, logical
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stack-juggling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stack juggling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#variables-declare-fetch-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Variables — declare, fetch, store
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#control-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Control flow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Control flow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#if-then" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IF / THEN
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#begin-until" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BEGIN / UNTIL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#begin-while-repeat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BEGIN / WHILE / REPEAT
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#do-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DO / LOOP
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mindustry-primitives-slot-reference-forms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mindustry primitives — slot-reference forms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mindustry-primitives-lifted-forms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mindustry primitives — lifted forms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#control-block-instructions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CONTROL-* block-instructions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#user-defined-word-calls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User-defined word calls
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stamped-defining-words-create-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stamped defining words (CREATE / DOES&gt;)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Stamped defining words (CREATE / DOES&gt;)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-stamping-reaches-a-literal-push" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How stamping reaches a literal push
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-stamping-is-rejected-cellboundaryerror" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When stamping is rejected (CellBoundaryError)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#finalize-pass-transforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Finalize-pass transforms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#forward-pointer-v2-subroutine-emission" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Forward pointer — v2 subroutine emission
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../optimization-levels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Optimization levels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../explanation/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Explanation
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Explanation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/why-mforth/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Why mforth
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/forth-mental-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Forth, the mental model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../explanation/meta-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The meta layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#conventions-used-in-this-page" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conventions used in this page
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#literals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Literals
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arithmetic-comparison-logical" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Arithmetic, comparison, logical
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stack-juggling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stack juggling
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#variables-declare-fetch-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Variables — declare, fetch, store
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#control-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Control flow
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Control flow">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#if-then" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IF / THEN
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#begin-until" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BEGIN / UNTIL
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#begin-while-repeat" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        BEGIN / WHILE / REPEAT
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#do-loop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DO / LOOP
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mindustry-primitives-slot-reference-forms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mindustry primitives — slot-reference forms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mindustry-primitives-lifted-forms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Mindustry primitives — lifted forms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#control-block-instructions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CONTROL-* block-instructions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#user-defined-word-calls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        User-defined word calls
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stamped-defining-words-create-does" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stamped defining words (CREATE / DOES&gt;)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Stamped defining words (CREATE / DOES&gt;)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-stamping-reaches-a-literal-push" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How stamping reaches a literal push
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-stamping-is-rejected-cellboundaryerror" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When stamping is rejected (CellBoundaryError)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#finalize-pass-transforms" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Finalize-pass transforms
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#forward-pointer-v2-subroutine-emission" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Forward pointer — v2 subroutine emission
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/fkberthold/mforth/edit/main/docs/reference/mlog-lowering.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="mlog-lowering">mlog lowering<a class="headerlink" href="#mlog-lowering" title="Permanent link">&para;</a></h1>
+<p>The exact instruction(s) mforth emits for each Forth construct it
+lowers. One row per surface word. The "mlog" column shows the
+emission template; the "notes" column flags operand staging, label
+conventions, and fusion quirks.</p>
+<p>This page documents <em>what mforth emits</em>. It is not a spec of the mlog
+instruction set itself — for that, see Mindustry's logic-processor
+documentation. For the per-word <em>semantic</em>, see <code>dictionary.md</code>. For
+how sidecar bindings rewrite block-handle operands in the finalize
+pass, see <code>sidecar-schema.md</code>.</p>
+<h2 id="conventions-used-in-this-page">Conventions used in this page<a class="headerlink" href="#conventions-used-in-this-page" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>s&lt;i&gt;</code> is a stack-slot mlog variable. The slot allocator assigns
+  indices statically: at static depth <code>D</code>, the bottom-of-stack lives in
+  <code>s0</code> and the top in <code>s&lt;D-1&gt;</code>. A push at depth <code>D</code> writes <code>s&lt;D&gt;</code>; a
+  pop at depth <code>D</code> reads <code>s&lt;D-1&gt;</code>.</li>
+<li><code>s&lt;a&gt;</code>, <code>s&lt;b&gt;</code>, <code>s&lt;c&gt;</code> denote distinct slot indices the allocator
+  picked for a particular word's input/output positions.</li>
+<li><code>__swap_tmp</code> is a reserved scratch variable used by <code>SWAP</code> / <code>ROT</code> /
+  <code>TUCK</code>. Forth identifiers starting with <code>__</code> are reserved.</li>
+<li><code>__do_idx_&lt;N&gt;</code> and <code>__do_limit_&lt;N&gt;</code> are the loop counter and bound
+  for the <code>N</code>-th <code>DO/LOOP</code> in the program (counted globally, not per
+  scope). Nesting cannot collide.</li>
+<li><code>L_if_&lt;N&gt;_end</code> / <code>L_if_&lt;N&gt;_else</code> / <code>L_begin_&lt;N&gt;_top</code> /
+  <code>L_begin_&lt;N&gt;_after</code> / <code>L_do_&lt;N&gt;_top</code> / <code>L_do_&lt;N&gt;_end</code> are symbolic
+  labels emitted by the control-flow arms; the finalize pass resolves
+  them to 0-indexed line numbers.</li>
+<li>"(2, 1)" is shorthand for stack effect <code>( a b -- c )</code> — two inputs,
+  one output.</li>
+</ul>
+<h2 id="literals">Literals<a class="headerlink" href="#literals" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Forth</th>
+<th>mlog</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;int&gt;</code></td>
+<td><code>set s&lt;i&gt; &lt;int&gt;</code></td>
+<td>(0, 1). <code>&lt;int&gt;</code> is rendered via Python <code>str(value)</code>.</td>
+</tr>
+<tr>
+<td><code>&lt;float&gt;</code></td>
+<td><code>set s&lt;i&gt; &lt;float&gt;</code></td>
+<td>(0, 1). Decimal-with-fractional-digits literal (e.g. <code>0.95</code>, <code>3.14</code>, <code>-2.5</code>, <code>1.0e-3</code>). Bead mforth-xk7. Rendered via Python <code>repr(value)</code> so the operand round-trips through mlog's tokenizer cleanly (decimal for ordinary magnitudes; scientific form for very small/large).</td>
+</tr>
+<tr>
+<td><code>S" &lt;text&gt;"</code></td>
+<td><code>set s&lt;i&gt; "&lt;text&gt;"</code></td>
+<td>(0, 1). Quotes preserved in the operand. mlog's <code>set</code> accepts a quoted-string r-value.</td>
+</tr>
+</tbody>
+</table>
+<p>A literal inside a Mindustry-primitive lifting window (<code>&lt;lit&gt; PRINT</code>,
+<code>&lt;lit&gt; PRINTFLUSH</code>, <code>&lt;lit&gt; &lt;lit&gt; SENSOR</code>) does <em>not</em> emit a standalone
+<code>set</code> — the literal value folds into the primitive's operand and the
+otherwise-required staging <code>set</code> is elided. See "Mindustry primitives
+— lifted forms" below.</p>
+<h2 id="arithmetic-comparison-logical">Arithmetic, comparison, logical<a class="headerlink" href="#arithmetic-comparison-logical" title="Permanent link">&para;</a></h2>
+<p>All binary; all emit <code>op &lt;mlog-op&gt; &lt;write&gt; &lt;read-a&gt; &lt;read-b&gt;</code> against
+the allocator's slot picks. The 0/1 result of a comparison is kept
+verbatim — mforth does <em>not</em> translate to Forth-traditional 0/-1 (see
+the <code>emit.py</code> module docstring for the rationale; the host REPL uses
+the same encoding for equivalence).</p>
+<table>
+<thead>
+<tr>
+<th>Forth</th>
+<th>mlog</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>+</code></td>
+<td><code>op add s&lt;c&gt; s&lt;a&gt; s&lt;b&gt;</code></td>
+<td>(2, 1)</td>
+</tr>
+<tr>
+<td><code>-</code></td>
+<td><code>op sub s&lt;c&gt; s&lt;a&gt; s&lt;b&gt;</code></td>
+<td>(2, 1)</td>
+</tr>
+<tr>
+<td><code>*</code></td>
+<td><code>op mul s&lt;c&gt; s&lt;a&gt; s&lt;b&gt;</code></td>
+<td>(2, 1)</td>
+</tr>
+<tr>
+<td><code>/</code></td>
+<td><code>op div s&lt;c&gt; s&lt;a&gt; s&lt;b&gt;</code></td>
+<td>(2, 1). Float division (NOT <code>idiv</code>) — matches the REPL's Python <code>/</code>. The pragmatic-dialect choice; see CLAUDE.md "REPL ↔ mlog convergence decisions".</td>
+</tr>
+<tr>
+<td><code>MOD</code></td>
+<td><code>op mod s&lt;c&gt; s&lt;a&gt; s&lt;b&gt;</code></td>
+<td>(2, 1)</td>
+</tr>
+<tr>
+<td><code>=</code></td>
+<td><code>op equal s&lt;c&gt; s&lt;a&gt; s&lt;b&gt;</code></td>
+<td>(2, 1). Writes 0 or 1.</td>
+</tr>
+<tr>
+<td><code>&lt;&gt;</code></td>
+<td><code>op notEqual s&lt;c&gt; s&lt;a&gt; s&lt;b&gt;</code></td>
+<td>(2, 1)</td>
+</tr>
+<tr>
+<td><code>&lt;</code></td>
+<td><code>op lessThan s&lt;c&gt; s&lt;a&gt; s&lt;b&gt;</code></td>
+<td>(2, 1)</td>
+</tr>
+<tr>
+<td><code>&gt;</code></td>
+<td><code>op greaterThan s&lt;c&gt; s&lt;a&gt; s&lt;b&gt;</code></td>
+<td>(2, 1)</td>
+</tr>
+<tr>
+<td><code>&lt;=</code></td>
+<td><code>op lessThanEq s&lt;c&gt; s&lt;a&gt; s&lt;b&gt;</code></td>
+<td>(2, 1)</td>
+</tr>
+<tr>
+<td><code>&gt;=</code></td>
+<td><code>op greaterThanEq s&lt;c&gt; s&lt;a&gt; s&lt;b&gt;</code></td>
+<td>(2, 1)</td>
+</tr>
+<tr>
+<td><code>AND</code></td>
+<td><code>op land s&lt;c&gt; s&lt;a&gt; s&lt;b&gt;</code></td>
+<td>(2, 1). <code>land</code> = logical-and.</td>
+</tr>
+<tr>
+<td><code>OR</code></td>
+<td><code>op or s&lt;c&gt; s&lt;a&gt; s&lt;b&gt;</code></td>
+<td>(2, 1)</td>
+</tr>
+<tr>
+<td><code>NOT</code></td>
+<td><code>op not s&lt;a&gt; s&lt;a&gt; 0</code></td>
+<td>(1, 1). Allocator gives the same slot for read and write; mlog's <code>op not</code> is unary but takes a third operand slot, which we pad with <code>0</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="stack-juggling">Stack juggling<a class="headerlink" href="#stack-juggling" title="Permanent link">&para;</a></h2>
+<p>The allocator's <code>read_slots</code> / <code>write_slots</code> for a stack-op already
+encode "which slot the value started in" and "which slot it ends up
+in". The emitter just shuffles values between those slot variables.</p>
+<table>
+<thead>
+<tr>
+<th>Forth</th>
+<th>mlog</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DUP</code></td>
+<td><code>set s&lt;i+1&gt; s&lt;i&gt;</code></td>
+<td>(1, 2). One copy.</td>
+</tr>
+<tr>
+<td><code>DROP</code></td>
+<td><em>(no instruction)</em></td>
+<td>(1, 0). Slot becomes dead; the allocator stops referencing it. Zero-cost.</td>
+</tr>
+<tr>
+<td><code>OVER</code></td>
+<td><code>set s&lt;i+1&gt; s&lt;i-1&gt;</code></td>
+<td>(2, 3). Copies the under-value to the new top.</td>
+</tr>
+<tr>
+<td><code>NIP</code></td>
+<td><code>set s&lt;i-1&gt; s&lt;i&gt;</code></td>
+<td>(2, 1). Squashes the under-value with the top.</td>
+</tr>
+<tr>
+<td><code>SWAP</code></td>
+<td><code>set __swap_tmp s&lt;a&gt;</code> <br> <code>set s&lt;a&gt; s&lt;b&gt;</code> <br> <code>set s&lt;b&gt; __swap_tmp</code></td>
+<td>(2, 2). Three sets via the scratch variable; a reserved slot would inflate worst-case slot count for no gain.</td>
+</tr>
+<tr>
+<td><code>ROT</code></td>
+<td><code>set __swap_tmp s&lt;a&gt;</code> <br> <code>set s&lt;a&gt; s&lt;b&gt;</code> <br> <code>set s&lt;b&gt; s&lt;c&gt;</code> <br> <code>set s&lt;c&gt; __swap_tmp</code></td>
+<td>(3, 3). Four sets via the scratch.</td>
+</tr>
+<tr>
+<td><code>TUCK</code></td>
+<td><code>set __swap_tmp s&lt;b&gt;</code> <br> <code>set s&lt;b&gt; s&lt;a&gt;</code> <br> <code>set s&lt;a&gt; __swap_tmp</code> <br> <code>set s&lt;c&gt; __swap_tmp</code></td>
+<td>(2, 3). <code>a b -- b a b</code>. Four sets.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="variables-declare-fetch-store">Variables — declare, fetch, store<a class="headerlink" href="#variables-declare-fetch-store" title="Permanent link">&para;</a></h2>
+<p>The dictionary models <code>&lt;varname&gt;</code> (a <code>UserVariable</code> reference) as a
+(0, 1) "pushes address" word. v1 has no addressable cells, so the
+emitter fuses the address-push with the immediately-following <code>@</code> or
+<code>!</code> into a single <code>set</code> and never materializes an on-stack address.</p>
+<p>The fusion runs at the AST level (<code>_fuse_variable_patterns</code> in
+<code>emit.py</code>) before stack allocation, so the slot map agrees with the
+emitted instruction stream.</p>
+<table>
+<thead>
+<tr>
+<th>Forth</th>
+<th>mlog</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>VARIABLE &lt;name&gt;</code></td>
+<td><em>(no instruction)</em></td>
+<td>Declaration only; the mlog variable is created the first time it is written.</td>
+</tr>
+<tr>
+<td><code>&lt;value&gt; &lt;name&gt; !</code> (fused)</td>
+<td><code>set &lt;name&gt; s&lt;i&gt;</code></td>
+<td>(writes the value-slot into the named variable). The standalone bare-address WordCall emits nothing; the <code>!</code> is what materializes.</td>
+</tr>
+<tr>
+<td><code>&lt;name&gt; @</code> (fused)</td>
+<td><code>set s&lt;i&gt; &lt;name&gt;</code></td>
+<td>(reads the named variable into the next stack slot).</td>
+</tr>
+<tr>
+<td><code>&lt;name&gt;</code> (bare, no @/!)</td>
+<td><em>(error)</em></td>
+<td>v1 is cell-free. <code>NotImplementedError</code>: "VARIABLE address '<name>' left on the stack". <code>&lt;name&gt; DUP @</code> falls into this; the fix is <code>&lt;name&gt; @ DUP</code>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="control-flow">Control flow<a class="headerlink" href="#control-flow" title="Permanent link">&para;</a></h2>
+<p>Labels are minted from per-construct counters (<code>_if_counter</code>,
+<code>_begin_counter</code>, <code>_do_counter</code>) that are program-global, not
+per-scope — mlog's address space is flat. Labels attach to the <em>next</em>
+emitted instruction; if no instruction follows, the label is held as a
+sentinel until the finalize pass resolves it to "line past the last
+instruction" (which mlog's auto-loop turns into "jump back to line
+0", correct for IF/THEN fall-through).</p>
+<h3 id="if-then">IF / THEN<a class="headerlink" href="#if-then" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Forth</th>
+<th>mlog</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>IF &lt;then&gt; THEN</code></td>
+<td><code>jump L_if_&lt;N&gt;_end equal s&lt;flag&gt; 0</code> <br> <code>&lt;then-body&gt;</code> <br> <code>L_if_&lt;N&gt;_end:</code></td>
+<td>(1, 0) at the IF. Flag is at <code>s&lt;D-1&gt;</code>. Falsey skips to end.</td>
+</tr>
+<tr>
+<td><code>IF &lt;then&gt; ELSE &lt;else&gt; THEN</code></td>
+<td><code>jump L_if_&lt;N&gt;_else equal s&lt;flag&gt; 0</code> <br> <code>&lt;then-body&gt;</code> <br> <code>jump L_if_&lt;N&gt;_end always 0 0</code> <br> <code>L_if_&lt;N&gt;_else:</code> <br> <code>&lt;else-body&gt;</code> <br> <code>L_if_&lt;N&gt;_end:</code></td>
+<td>Both bodies must produce the same net depth (stackcheck enforces).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="begin-until">BEGIN / UNTIL<a class="headerlink" href="#begin-until" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Forth</th>
+<th>mlog</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BEGIN &lt;body&gt; UNTIL</code></td>
+<td><code>L_begin_&lt;N&gt;_top:</code> <br> <code>&lt;body&gt;</code> <br> <code>jump L_begin_&lt;N&gt;_top equal s&lt;flag&gt; 0</code></td>
+<td>Loops while flag is zero. Flag is at the entry-depth slot of the body.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="begin-while-repeat">BEGIN / WHILE / REPEAT<a class="headerlink" href="#begin-while-repeat" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Forth</th>
+<th>mlog</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BEGIN &lt;test&gt; WHILE &lt;body&gt; REPEAT</code></td>
+<td><code>L_begin_&lt;N&gt;_top:</code> <br> <code>&lt;test-body&gt;</code> <br> <code>jump L_begin_&lt;N&gt;_after equal s&lt;flag&gt; 0</code> <br> <code>&lt;body&gt;</code> <br> <code>jump L_begin_&lt;N&gt;_top always 0 0</code> <br> <code>L_begin_&lt;N&gt;_after:</code></td>
+<td>Falsey flag from the test exits the loop. Both branches are stack-neutral.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="do-loop">DO / LOOP<a class="headerlink" href="#do-loop" title="Permanent link">&para;</a></h3>
+<p>ANS Forth convention: <code>( limit index -- )</code>, index on top.</p>
+<table>
+<thead>
+<tr>
+<th>Forth</th>
+<th>mlog</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DO &lt;body&gt; LOOP</code></td>
+<td><code>set __do_idx_&lt;N&gt; s&lt;index&gt;</code> <br> <code>set __do_limit_&lt;N&gt; s&lt;limit&gt;</code> <br> <code>L_do_&lt;N&gt;_top:</code> <br> <code>jump L_do_&lt;N&gt;_end greaterThanEq __do_idx_&lt;N&gt; __do_limit_&lt;N&gt;</code> <br> <code>&lt;body&gt;</code> <br> <code>op add __do_idx_&lt;N&gt; __do_idx_&lt;N&gt; 1</code> <br> <code>jump L_do_&lt;N&gt;_top always 0 0</code> <br> <code>L_do_&lt;N&gt;_end:</code></td>
+<td>Per-N counters mean nested DO/LOOPs never collide. The bounds test is at the <strong>TOP</strong> (zero-trip guard): <code>limit start DO</code> with <code>start &gt;= limit</code> runs the body zero times, matching the host REPL's <code>while idx &lt; limit</code> — the headline equivalence property. Bead mforth-2p8 (generative harness caught the earlier bottom-test lowering, which always ran the body once).</td>
+</tr>
+<tr>
+<td><code>I</code> (inside DO/LOOP)</td>
+<td><code>set s&lt;i&gt; __do_idx_&lt;N&gt;</code></td>
+<td>(0, 1). <code>N</code> is the innermost active loop.</td>
+</tr>
+<tr>
+<td><code>J</code> (inside doubly-nested DO/LOOP)</td>
+<td><code>set s&lt;i&gt; __do_idx_&lt;N&gt;</code></td>
+<td>(0, 1). <code>N</code> is the <em>outer</em> of the two innermost loops. Using <code>J</code> with less than two enclosing loops is an emit-time error.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="mindustry-primitives-slot-reference-forms">Mindustry primitives — slot-reference forms<a class="headerlink" href="#mindustry-primitives-slot-reference-forms" title="Permanent link">&para;</a></h2>
+<p>When the operands are runtime-computed (came from arithmetic, a
+fetched variable, an earlier primitive), the primitive emits against
+slot references. The lifted forms (next section) preempt this when
+the operands are compile-time literals.</p>
+<table>
+<thead>
+<tr>
+<th>Forth</th>
+<th>mlog</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PRINT</code></td>
+<td><code>print s&lt;i&gt;</code></td>
+<td>(1, 0)</td>
+</tr>
+<tr>
+<td><code>PRINTFLUSH</code></td>
+<td><code>printflush s&lt;i&gt;</code></td>
+<td>(1, 0). Block handle as a slot is unusual in v1 — usually lifts.</td>
+</tr>
+<tr>
+<td><code>WAIT</code></td>
+<td><code>wait s&lt;i&gt;</code></td>
+<td>(1, 0). Never lifts (intrinsically runtime).</td>
+</tr>
+<tr>
+<td><code>SENSOR</code></td>
+<td><code>sensor s&lt;i-2&gt; s&lt;i-2&gt; s&lt;i-1&gt;</code></td>
+<td>(2, 1). Result aliases the block slot — mlog reads operands before writing within an instruction.</td>
+</tr>
+<tr>
+<td><code>GETLINK</code></td>
+<td><code>getlink s&lt;i&gt; s&lt;i&gt;</code></td>
+<td>(1, 1). Index slot is reused as the output handle slot. Never lifts.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="mindustry-primitives-lifted-forms">Mindustry primitives — lifted forms<a class="headerlink" href="#mindustry-primitives-lifted-forms" title="Permanent link">&para;</a></h2>
+<p>The emit pass scans for two- and three-term windows where a literal,
+a <code>UserVariable</code> (sidecar-pre-seeded link name), or an <code>@-identifier</code>
+immediately precedes a Mindustry primitive. The match folds operands
+into the primitive instruction and elides the staging <code>set</code>.</p>
+<p>Selection rules: <code>PRINT</code> accepts any of LitInt/LitFloat/LitStr/
+UserVariable/@-identifier; <code>PRINTFLUSH</code> accepts LitStr/UserVariable/
+@-identifier (no LitInt/LitFloat — numeric block handles are
+nonsense); <code>SENSOR</code> accepts any block-source for operand 1 and
+LitStr/@-identifier for operand 2.</p>
+<table>
+<thead>
+<tr>
+<th>Forth</th>
+<th>mlog</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;int&gt; PRINT</code></td>
+<td><code>print &lt;int&gt;</code></td>
+<td>Literal lift.</td>
+</tr>
+<tr>
+<td><code>&lt;float&gt; PRINT</code></td>
+<td><code>print &lt;float&gt;</code></td>
+<td>Float-literal lift (bead mforth-xk7). <code>&lt;float&gt;</code> rendered via Python <code>repr()</code> to match the slot-form lowering.</td>
+</tr>
+<tr>
+<td><code>S" &lt;text&gt;" PRINT</code></td>
+<td><code>print "&lt;text&gt;"</code></td>
+<td>Quotes preserved.</td>
+</tr>
+<tr>
+<td><code>&lt;linkname&gt; PRINT</code></td>
+<td><code>print &lt;linkname&gt;</code></td>
+<td>UserVariable lift. After Mode A sidecar substitution, <code>&lt;linkname&gt;</code> becomes the in-game name.</td>
+</tr>
+<tr>
+<td><code>@&lt;id&gt; PRINT</code></td>
+<td><code>print @&lt;id&gt;</code></td>
+<td>@-identifier lift (magic var, content, sensor prop).</td>
+</tr>
+<tr>
+<td><code>S" &lt;name&gt;" PRINTFLUSH</code></td>
+<td><code>printflush &lt;name&gt;</code></td>
+<td>Quotes stripped — block handles are bare identifiers in mlog.</td>
+</tr>
+<tr>
+<td><code>&lt;linkname&gt; PRINTFLUSH</code></td>
+<td><code>printflush &lt;linkname&gt;</code></td>
+<td>UserVariable lift. Sidecar substitution rewrites the operand.</td>
+</tr>
+<tr>
+<td><code>@&lt;id&gt; PRINTFLUSH</code></td>
+<td><code>printflush @&lt;id&gt;</code></td>
+<td>@-identifier lift.</td>
+</tr>
+<tr>
+<td><code>S" &lt;block&gt;" S" &lt;prop&gt;" SENSOR</code></td>
+<td><code>sensor s&lt;i&gt; &lt;block&gt; &lt;prop&gt;</code></td>
+<td>Both literals lift.</td>
+</tr>
+<tr>
+<td><code>&lt;linkname&gt; S" &lt;prop&gt;" SENSOR</code></td>
+<td><code>sensor s&lt;i&gt; &lt;linkname&gt; &lt;prop&gt;</code></td>
+<td>Block from a UserVariable.</td>
+</tr>
+<tr>
+<td><code>&lt;linkname&gt; @&lt;prop&gt; SENSOR</code></td>
+<td><code>sensor s&lt;i&gt; &lt;linkname&gt; @&lt;prop&gt;</code></td>
+<td>Block from a UserVariable, prop from an @-identifier.</td>
+</tr>
+<tr>
+<td><code>@&lt;block&gt; @&lt;prop&gt; SENSOR</code></td>
+<td><code>sensor s&lt;i&gt; @&lt;block&gt; @&lt;prop&gt;</code></td>
+<td>Both @-identifiers.</td>
+</tr>
+<tr>
+<td><code>S" &lt;block&gt;" @&lt;prop&gt; SENSOR</code></td>
+<td><code>sensor s&lt;i&gt; &lt;block&gt; @&lt;prop&gt;</code></td>
+<td>LitStr block + @-id prop.</td>
+</tr>
+<tr>
+<td><code>&lt;any&gt; S" &lt;prop&gt;" SENSOR</code> (tail)</td>
+<td><code>sensor s&lt;i&gt; s&lt;j&gt; &lt;prop&gt;</code></td>
+<td>Prop-only lift; block came from an earlier-emitted term.</td>
+</tr>
+<tr>
+<td><code>&lt;any&gt; @&lt;prop&gt; SENSOR</code> (tail)</td>
+<td><code>sensor s&lt;i&gt; s&lt;j&gt; @&lt;prop&gt;</code></td>
+<td>Prop-only lift; block came from an earlier-emitted term.</td>
+</tr>
+</tbody>
+</table>
+<p>For the catalogue of <code>@-identifiers</code> recognized by the resolver, see
+the dictionary reference page.</p>
+<h2 id="control-block-instructions">CONTROL-* block-instructions<a class="headerlink" href="#control-block-instructions" title="Permanent link">&para;</a></h2>
+<p>mlog's <code>control</code> instruction is always 5 operands after the
+sub-command. Unused tail slots are padded with <code>0</code>. The two most
+common shapes (<code>CONTROL-ENABLED</code>, <code>CONTROL-CONFIG</code>) have lifted forms
+when the block is a UserVariable/LitStr/@-identifier <em>and</em> the value
+is a LitInt/LitStr/@-identifier.</p>
+<table>
+<thead>
+<tr>
+<th>Forth</th>
+<th>mlog</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;block&gt; &lt;flag&gt; CONTROL-ENABLED</code> (lifted)</td>
+<td><code>control enabled &lt;block&gt; &lt;flag&gt; 0 0 0</code></td>
+<td>2 stack ops + 3 zero-pads.</td>
+</tr>
+<tr>
+<td><code>&lt;block&gt; &lt;value&gt; CONTROL-CONFIG</code> (lifted)</td>
+<td><code>control config &lt;block&gt; &lt;value&gt; 0 0 0</code></td>
+<td>2 stack ops + 3 zero-pads.</td>
+</tr>
+<tr>
+<td><code>CONTROL-ENABLED</code> (slot-form fallback)</td>
+<td><code>control enabled s&lt;i-1&gt; s&lt;i&gt; 0 0 0</code></td>
+<td>When operands didn't match a lift window.</td>
+</tr>
+<tr>
+<td><code>CONTROL-CONFIG</code> (slot-form fallback)</td>
+<td><code>control config s&lt;i-1&gt; s&lt;i&gt; 0 0 0</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>CONTROL-SHOOT</code></td>
+<td><code>control shoot s&lt;i-3&gt; s&lt;i-2&gt; s&lt;i-1&gt; s&lt;i&gt; 0</code></td>
+<td>(4, 0). Block + x + y + shoot-flag. 1 zero-pad.</td>
+</tr>
+<tr>
+<td><code>CONTROL-SHOOTP</code></td>
+<td><code>control shootp s&lt;i-2&gt; s&lt;i-1&gt; s&lt;i&gt; 0 0</code></td>
+<td>(3, 0). Block + unit + shoot-flag. 2 zero-pads.</td>
+</tr>
+<tr>
+<td><code>CONTROL-COLOR</code></td>
+<td><code>control color s&lt;i-3&gt; s&lt;i-2&gt; s&lt;i-1&gt; s&lt;i&gt; 0</code></td>
+<td>(4, 0). Block + r + g + b. 1 zero-pad.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="user-defined-word-calls">User-defined word calls<a class="headerlink" href="#user-defined-word-calls" title="Permanent link">&para;</a></h2>
+<p>A <code>: name &lt;body&gt; ;</code> definition emits <em>nothing</em> at its declaration
+site. Each call site inlines the body with every internal <code>s&lt;k&gt;</code>
+rewritten to <code>s&lt;k + caller_base&gt;</code>. Named variables (<code>foo</code>,
+<code>__swap_tmp</code>, <code>__do_idx_&lt;N&gt;</code>) pass through unchanged — they live in
+mlog's flat global namespace.</p>
+<p>This is the v1 strategy. Inlining always wins on speed; the
+<code>@counter</code>-trick subroutine emission is held in reserve as a v2
+size-only fallback (see "Forward pointer" below).</p>
+<h2 id="stamped-defining-words-create-does">Stamped defining words (<code>CREATE</code> / <code>DOES&gt;</code>)<a class="headerlink" href="#stamped-defining-words-create-does" title="Permanent link">&para;</a></h2>
+<p>The meta layer — <code>CREATE</code>, <code>,</code>, <code>DOES&gt;</code>, source-defined <code>CONSTANT</code>,
+and <code>MACRO:</code> — emits <strong>nothing of its own</strong>. It is eliminated by the
+phase-0 <code>expand</code> pass (<code>expand.py</code>) that runs <em>between</em> <code>resolve</code> and
+<code>stackcheck</code>, so the instruction stream this page describes never
+contains a meta-word. The lowering of the meta layer is therefore
+entirely "what the residual literals lower to", and that residual is a
+<strong>literal push</strong> — there is <strong>no mlog memory cell</strong> in the output.</p>
+<h3 id="how-stamping-reaches-a-literal-push">How stamping reaches a literal push<a class="headerlink" href="#how-stamping-reaches-a-literal-push" title="Permanent link">&para;</a></h3>
+<p>A <code>:</code> definition shaped <code>CREATE &lt;create-phase&gt; DOES&gt; &lt;does-body&gt;</code> is a
+<em>defining word</em>. When it is called with compile-time-constant arguments
+(<code>76 CONSTANT TROMBONES</code>), <code>expand</code> (<code>_stamp_child</code> in <code>expand.py</code>):</p>
+<ol>
+<li>Runs the <strong>create-phase</strong> — one <code>,</code> consumes one preceding constant
+   into the child's <strong>immutable field</strong> (a compile-time list, <em>not</em> a
+   runtime cell).</li>
+<li><strong>Partial-evaluates</strong> the <code>DOES&gt;</code> body against that field, symbolically.
+   <code>@</code> against the field base folds to the constant value; pure
+   arithmetic / comparison / logical ops and stack-juggle words fold
+   too (using the same float-<code>/</code>, 0/1-comparison, int-bitwise rules as
+   <code>fold.py</code> and the host primitives).</li>
+<li>If the residual is <strong>cell-free</strong> (all constants — no leftover field
+   address, no store, no runtime fetch), registers the child as a stamped
+   <code>Macro</code> whose body is the residual literal terms.</li>
+</ol>
+<p>The general macro inliner then carries each <em>use</em> of the child through to
+its literal body, and the literal lowers per the <strong>Literals</strong> table at the
+top of this page. So:</p>
+<table>
+<thead>
+<tr>
+<th>Forth (with <code>: CONSTANT CREATE , DOES&gt; @ ;</code>)</th>
+<th>mlog</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>76 CONSTANT TROMBONES</code> then <code>TROMBONES</code></td>
+<td><code>set s&lt;i&gt; 76</code></td>
+<td>Stamps to a literal push. The <code>CONSTANT</code> call site itself emits nothing.</td>
+</tr>
+<tr>
+<td><code>76 CONSTANT TROMBONES</code> then <code>TROMBONES PRINT</code></td>
+<td><code>print 76</code></td>
+<td>The stamped literal then takes the literal-lift fast path (<code>&lt;lit&gt; PRINT</code>).</td>
+</tr>
+<tr>
+<td><code>: DOUBLED CREATE , DOES&gt; @ 2 * ;</code> then <code>21 DOUBLED X</code> then <code>X PRINT</code></td>
+<td><code>print 42</code></td>
+<td><code>DOES&gt;</code> body <code>@ 2 *</code> partial-evaluated against field <code>[21]</code> → constant <code>42</code> → literal push, then lifted.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>No memory cell is emitted.</strong> There is no <code>read</code>/<code>write</code> instruction, no
+<code>@</code>-fetch instruction, and no allocated mlog cell variable — the field is
+consumed entirely at compile time. This is the design D5 cell-free
+boundary: const + immutable data folds to a literal; the in-game value
+<em>conceptually</em> lives in a per-child field that <code>DOES&gt; @</code> reads, but mforth
+<strong>partial-evaluates that fetch away</strong> rather than materialising the cell.
+The stamped output is byte-equivalent under the REPL ↔ mlog property at O0.</p>
+<h3 id="when-stamping-is-rejected-cellboundaryerror">When stamping is rejected (<code>CellBoundaryError</code>)<a class="headerlink" href="#when-stamping-is-rejected-cellboundaryerror" title="Permanent link">&para;</a></h3>
+<p>A <code>DOES&gt;</code> body that would need a <strong>mutable</strong> or <strong>runtime-computed</strong>
+per-instance cell crosses the v1 cell-free boundary. <code>expand</code> raises
+<code>CellBoundaryError</code> (naming the defining word and child) — a clean compile
+error, <strong>never</strong> a silent miscompile and <strong>never</strong> a lowering to a memory
+cell. Triggers: a <code>!</code> store; a runtime / runtime-indexed <code>@</code> fetch; a
+create-phase op other than <code>,</code>; a non-constant stamp argument; or a
+residual that does not reduce to a constant (e.g. a bare field address left
+on the stack). Those cells re-enter only in v2.</p>
+<p><code>MACRO:</code> bodies and <code>DOES&gt;</code> bodies are additionally <strong>purity</strong>-checked: a
+world-sink call (<code>PRINT</code> / <code>PRINTFLUSH</code> / <code>SENSOR</code> / <code>WAIT</code> / <code>GETLINK</code> /
+<code>CONTROL-*</code>) or a <code>@</code> read of a <code>VARIABLE</code> raises <code>PurityError</code> (D14). The
+check is tag-driven on the <code>"mindustry"</code> / <code>"mindustry-control"</code> families,
+so a new world-sink is caught regardless of its name. A cyclic macro raises
+<code>ExpandError</code>. None of these reach a backend.</p>
+<h2 id="finalize-pass-transforms">Finalize-pass transforms<a class="headerlink" href="#finalize-pass-transforms" title="Permanent link">&para;</a></h2>
+<p>The emit pass produces a flat <code>list[MlogInstr]</code> of
+<code>(label, opcode, operands)</code> tuples. The finalize pass
+(<code>finalize.py</code>) chains four sub-passes whose order is load-bearing.</p>
+<ol>
+<li><strong>Sidecar substitution</strong> (<code>substitute_sidecar</code>). Walks the
+   instruction list and rewrites operand tokens for <code>printflush</code>
+   (position 0) and <code>sensor</code> (position 1) when they resolve to a
+   Mode A (<code>target = "&lt;in-game-name&gt;"</code>) link. Two shapes are
+   recognized:</li>
+<li><strong>Bare-name</strong> (the literal-lift produced <code>printflush display</code>):
+     operand replaced in place with the in-game name.</li>
+<li>
+<p><strong>Slot-reference</strong> (<code>set s&lt;i&gt; "display"</code> followed by
+     <code>printflush s&lt;i&gt;</code>): consumer's operand replaced with the in-game
+     name and the staging <code>set</code> elided.</p>
+</li>
+<li>
+<p><strong>Prologue emission</strong> (<code>emit_prologue</code>). For each Mode B
+   (<code>index = N</code>) link in the sidecar, prepend a <code>getlink &lt;mforth-name&gt;
+   &lt;N&gt;</code> instruction. Must run before label resolution so label
+   line-numbers account for the prologue offset.</p>
+</li>
+<li>
+<p><strong>Label resolution</strong> (<code>resolve_labels</code>). Two-pass walk: build a
+   <code>label → 0-indexed line number</code> map (sentinel tuples consume zero
+   lines), then rewrite every <code>jump</code> operand-0 from the symbolic
+   label to its line number as a string. Sentinels are stripped on
+   the way out.</p>
+</li>
+<li>
+<p><strong>Writer</strong> (<code>write_mlog</code>). Emits a <code># mforth output — &lt;count&gt;
+   instructions; SOURCE=&lt;path&gt;; SIDECAR=&lt;path&gt;</code> header line, then one
+   <code>opcode op1 op2 ...</code> per instruction, with exactly one trailing
+   newline at EOF. Raises <code>ValueError</code> if any unresolved label leaks
+   to this layer.</p>
+</li>
+</ol>
+<h2 id="forward-pointer-v2-subroutine-emission">Forward pointer — v2 subroutine emission<a class="headerlink" href="#forward-pointer-v2-subroutine-emission" title="Permanent link">&para;</a></h2>
+<p>v1 inlines every user-defined word. v2 will add a <code>-Osize</code> opt-in
+(and an automatic fallback when inlining exceeds the per-processor
+instruction budget) that emits user definitions as mlog subroutines
+using the writable <code>@counter</code> trick — the caller saves the return
+address, sets <code>@counter</code> to the entry label, and the callee ends with
+<code>set @counter &lt;return-addr-var&gt;</code>. The same lever enables jump-table
+dispatch via <code>op add @counter @counter &lt;offset&gt;</code>. The v2 optimization
+roadmap (beads <code>mforth-10t.33</code> through <code>mforth-10t.40</code>) covers the
+peephole, common-subexpression, and dead-code passes that will sit
+alongside subroutine emission. None of those ship in v1; nothing on
+this page is affected by them today.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.indexes", "navigation.top", "navigation.tracking", "search.suggest", "search.highlight", "search.share", "content.code.copy", "content.action.edit"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
