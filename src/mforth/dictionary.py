@@ -760,8 +760,32 @@ def resolve(program: Program, dictionary: Optional[Dictionary] = None) -> Dictio
     for var in _collect_variable_declarations(program):
         d.add_variable(var)
 
+    # Phase 0a — CREATE/,/DOES> defining-word stamping (bead mforth-7h1.2).
+    # Detect defining words and stamp each child invocation into a Macro in the
+    # dictionary BEFORE the existence check, so stamped child references resolve
+    # to Macros and the meta-words (CREATE / , / DOES>) + defining-word names
+    # are tolerated. The actual program transform (dropping the defining-word
+    # definitions + child-invocation sequences) happens in ``expand``. Raises
+    # ``CellBoundaryError`` (D5) on a boundary-crossing child.
+    from mforth.expand import (  # local import: avoid cycle
+        register_defining_words,
+        strip_defining_words_in_place,
+    )
+
+    tolerated = register_defining_words(program, d)
+    # Strip the defining-word definitions + child-invocation sequences from the
+    # program IN PLACE (and inline stamped-child references to literals), so a
+    # downstream consumer that runs its own ``stackcheck``/``emit`` pipeline
+    # (e.g. the equivalence harness) — without re-threading the program through
+    # ``expand`` — never sees CREATE/,/DOES> or a stamped-child Macro.
+    strip_defining_words_in_place(program, d)
+
     def check(t) -> None:
-        if isinstance(t, WordCall) and t.name not in d:
+        if (
+            isinstance(t, WordCall)
+            and t.name not in d
+            and t.name.lower() not in tolerated
+        ):
             raise UnresolvedWordError(t.name, t.src_loc)
 
     _walk_terms(program.main, check)
