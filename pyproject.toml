@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mforth"
-version = "0.1.2"
+version = "0.1.3"
 description = "Pragmatic Forth dialect that compiles to Mindustry mlog"
 readme = "README.md"
 license = { text = "MIT" }

@@ -9,10 +9,13 @@
 #     :grammar build
 # (Or from the shell:  hx --grammar fetch && hx --grammar build)
 #
-# The language-server section below assumes `mforth lsp` is on your PATH.
-# That subcommand does NOT exist yet — it lands with bead mforth-10t.20
-# (LSP server). Until then, Helix will silently skip the LSP and you'll
-# still get tree-sitter syntactic highlighting from the grammar.
+# The language-server section below assumes `mforth lsp` is on your PATH
+# (it ships with the `mforth` package — `pip install -e .` exposes the
+# `mforth` console script). It provides stack-effect diagnostics, hover,
+# and completion, and understands the meta layer (CREATE/DOES> defining
+# words + `MACRO:`) — diagnostics run on the post-expansion AST, so they
+# match `mforth compile`. tree-sitter gives you syntactic highlighting
+# independently, so the grammar is useful even without the LSP.
 
 [[language]]
 name = "mforth"
