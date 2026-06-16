@@ -1,0 +1,18 @@
+# Exercise spec — bundled package data (bead mforth-7h1.5, ch10 defining words).
+# See ../forth-101/01-double.spec.toml / src/mforth/exercises/__init__.py
+# for the full schema. Part-I exercises are abstract: no simulator sidecar.
+id = "forth-104/03-family"
+prompt = "Define a defining word `SQUARED-C` whose children push the SQUARE of their stored value (`CREATE , DOES> @ DUP *`). Stamp two children — `six` from 6 and `nine` from 9 — to prove one defining word mints a whole family."
+hint = "The body `DOES> @ DUP *` fetches the field and squares it with DUP *. Define `: SQUARED-C  CREATE , DOES> @ DUP * ;`, then `6 SQUARED-C six` and `9 SQUARED-C nine`."
+
+[[case]]
+driver = "six ."
+expect = ["36"]
+
+[[case]]
+driver = "nine ."
+expect = ["81"]
+
+[[case]]
+driver = "six nine + ."
+expect = ["117"]

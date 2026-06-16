@@ -1,21 +1,21 @@
-# 13 — A real control loop
+# 15 — A real control loop
 
 > **You will:** put the three skills from Part II together —
-> [sensing](11-sensing.md), [deciding](05-branching.md), and
-> [acting](12-controlling.md) — into the shape every Mindustry
+> [sensing](13-sensing.md), [deciding](05-branching.md), and
+> [acting](14-controlling.md) — into the shape every Mindustry
 > controller has: **sense → decide → act → wait**, run over and over
 > by the processor's auto-loop. You will write a controller word that
 > announces its decision on every tick.
 
-In [chapter 11](11-sensing.md) you read the world with `SENSOR`. In
-[chapter 12](12-controlling.md) you acted on it with `CONTROL-ENABLED`.
+In [chapter 13](13-sensing.md) you read the world with `SENSOR`. In
+[chapter 14](14-controlling.md) you acted on it with `CONTROL-ENABLED`.
 This chapter is the glue: the **loop** that does both, forever.
 
 ## The shape of every controller
 
 A logic processor does not run your program once and stop. It runs it
 top to bottom, falls off the end, and starts again at the top — mlog's
-**auto-loop**. You saw this back in [chapter 10](10-simulator.md): the
+**auto-loop**. You saw this back in [chapter 12](12-simulator.md): the
 counter kept counting because the processor kept re-running it.
 
 That changes how you write a program. You are not writing a script that
@@ -60,16 +60,20 @@ value in directly and still test the real thing.
 ## The whole loop
 
 Now the full four steps. This controller keeps a tank topped up: when the
-level drops below 20 it turns a pump on; otherwise it holds. Each tick it
-flushes a status line to a message block and waits a second.
+level drops below a low-water mark it turns a pump on; otherwise it holds.
+Each tick it flushes a status line to a message block and waits a second.
+We name the threshold with a macro — the named-constant trick from
+[chapter 11](11-macros.md) — so the magic number `20` has a name that
+reads, and `LOW-LEVEL` folds to `20` before the program runs:
 
 ```forth
 \ A tank-fill controller: sense → decide → act → wait.
+MACRO: LOW-LEVEL 20 ;
 VARIABLE level
 
 : control-loop ( -- )
   level @                       \ 1. SENSE — read the current level
-  20 < IF                       \ 2. DECIDE — is it low?
+  LOW-LEVEL < IF                \ 2. DECIDE — is it low?
     pump 1 CONTROL-ENABLED      \ 3. ACT — pump on
     S" FILLING" PRINT
   ELSE
@@ -84,7 +88,7 @@ control-loop
 ```
 
 It needs a sidecar to name the two blocks (`pump` and `display`) — the
-same `.world.toml` idea from [chapter 10](10-simulator.md):
+same `.world.toml` idea from [chapter 12](12-simulator.md):
 
 ```toml
 [links.pump]
@@ -126,7 +130,7 @@ that toggles a block on and off near a threshold it makes the block
 time to actually change between readings. (When you need a controller
 that *cannot* chatter even without a wait, you reach for hysteresis —
 that is a [chapter 07](07-state.md) `VARIABLE` trick, and you will see it
-again in the [next chapter's](14-capstone.md) wrap-up.)
+again in the [next chapter's](16-capstone.md) wrap-up.)
 
 ## Exercises
 
@@ -178,7 +182,7 @@ mforth check pump-controller.fs
 
 You can now write a controller: the sense → decide → act → wait loop
 that every Mindustry automation is built from. The
-[next chapter](14-capstone.md) is the **capstone** — you will build a
+[next chapter](16-capstone.md) is the **capstone** — you will build a
 real one, the drain-the-bigger-pile sorter, in three checked milestones.
-Then [chapter 15](15-where-next.md) hands you off to compiling these
+Then [chapter 17](17-where-next.md) hands you off to compiling these
 controllers to mlog you can paste into the game.

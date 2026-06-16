@@ -12,8 +12,8 @@
 This is the start of **Learn Forth with mforth**, a series that
 teaches you Forth from zero using mforth's simulator and its built-in
 exercise checker. You do not need to know Mindustry yet; the first
-nine chapters are pure Forth. We pick up Mindustry in
-[Chapter 10](10-simulator.md).
+eleven chapters are pure Forth. We pick up Mindustry in
+[Chapter 12](12-simulator.md).
 
 ## One stack, and that is the whole trick
 

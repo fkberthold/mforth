@@ -184,7 +184,9 @@ _DOCS = Path(__file__).resolve().parents[2] / "docs" / "tutorials" / "learn-fort
     [
         ("07-state.md", "08-output.md"),
         ("08-output.md", "09-factoring.md"),
-        ("09-factoring.md", "10-simulator.md"),
+        # ch9 now hands off to the meta layer (ch10 defining words), which
+        # closes Part I before the simulator chapters (bead mforth-7h1.5).
+        ("09-factoring.md", "10-defining-words.md"),
     ],
 )
 def test_chapter_page_exists_and_links_next(page: str, must_link: str):

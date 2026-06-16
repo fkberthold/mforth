@@ -1,0 +1,14 @@
+# Exercise spec — bundled package data (bead mforth-7h1.5, ch11 macros).
+# See ../forth-101/01-double.spec.toml / src/mforth/exercises/__init__.py
+# for the full schema. Part-I exercises are abstract: no simulator sidecar.
+id = "forth-105/02-compose"
+prompt = "Define `tenx` (`10 *`) and then `hundredx` IN TERMS OF `tenx` (`tenx tenx`). Naming `hundredx` should multiply by one hundred. Macros compose — a macro body may name other macros."
+hint = "`MACRO: tenx 10 * ;` then `MACRO: hundredx tenx tenx ;`. `hundredx` expands to `tenx tenx`, each `tenx` to `10 *`, so `5 hundredx` becomes `5 10 * 10 *`."
+
+[[case]]
+driver = "5 hundredx ."
+expect = ["500"]
+
+[[case]]
+driver = "3 tenx ."
+expect = ["30"]

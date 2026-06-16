@@ -142,9 +142,10 @@ stack ops.
 - Factoring is free at runtime (mforth inlines), so clarity costs you
   nothing.
 
-That closes **Part I — Thinking in Forth**. You can now build, name,
-branch, loop, remember, and report — the whole stack-language mental
-model. Next comes **Part II**, where you point all of it at the
-Mindustry simulator: [10. Meet the simulator](10-simulator.md) — real
-blocks, a `.world.toml` sidecar, and output that lands on a message
-block in-game.
+You can now build, name, branch, loop, remember, report, and *factor* —
+the whole stack-language mental model. There is one more Forth idea
+before Part I is done, and it is the one Forthers are proudest of: words
+that **make other words**. Next:
+[10. Words that make words](10-defining-words.md), where you define the
+defining word `CONSTANT` yourself — and watch it stamp out new words at
+compile time.

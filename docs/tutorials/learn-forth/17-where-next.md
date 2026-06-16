@@ -1,4 +1,4 @@
-# 15 — Where next
+# 17 — Where next
 
 > **You will:** take a controller out of the simulator and into the
 > game — compile it to paste-ready mlog, see what the optimizer does for
@@ -8,7 +8,7 @@
 You have come a long way from `5 3 +`. You can think in stacks, define
 words, branch and loop, hold state, talk to message blocks, sense the
 world, control blocks, and assemble all of it into a real control loop —
-the [capstone sorter](14-capstone.md) was a genuine Mindustry program.
+the [capstone sorter](16-capstone.md) was a genuine Mindustry program.
 
 So far everything has run in the **simulator** — `mforth run` and
 `mforth check` against a Python mock of the Mindustry world. That is the
@@ -19,7 +19,7 @@ you can paste into an actual logic processor.
 ## Compile to mlog
 
 `mforth compile` turns a `.fs` file into mlog text. Take the pump
-controller you wrote in [chapter 13](13-control-loop.md), trimmed to just
+controller you wrote in [chapter 15](15-control-loop.md), trimmed to just
 the decision and action:
 
 ```forth
@@ -109,7 +109,7 @@ now) and focuses on the *Mindustry* craft: it ladders through six
 programs that port real hand-written mlog scripts from the community wiki
 and sets the compiled mforth side-by-side with the original, so you can
 see exactly what the dialect buys you. The sorter you built in
-[chapter 14](14-capstone.md) is one of its set pieces — you will recognize
+[chapter 16](16-capstone.md) is one of its set pieces — you will recognize
 it. That is the natural next read.
 
 ## Reference and tooling

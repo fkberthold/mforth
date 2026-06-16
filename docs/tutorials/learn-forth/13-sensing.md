@@ -1,11 +1,11 @@
-# 11. Reading the world
+# 13. Reading the world
 
 > **You will:** use `SENSOR` to pull a block's properties onto the
 > stack, learn the `@`-property names for the things you can read, and
 > turn a reading into a decision your earlier `IF`s can branch on. About
 > ten minutes.
 >
-> **You will need:** [chapter 10](./10-simulator.md) (the sidecar and
+> **You will need:** [chapter 12](./12-simulator.md) (the sidecar and
 > message blocks) and your comfort with comparisons (`< > =`) from
 > [chapter 4](./04-arithmetic.md).
 
@@ -126,15 +126,15 @@ for one used twice or more, the name reads better than a stack of `DUP`s.
 
 ## Exercises
 
-Same flow as chapter 10: write a `.fs` starting with the
+Same flow as chapter 12: write a `.fs` starting with the
 `\ @exercise <id>` marker, run `mforth check <file>`, look for the `✓`.
 `--scaffold <id>` gives you a stub; `--solution <id>` reveals the answer.
 Both exercises bundle a sidecar that binds `vault1` to a core block **and
-seeds its readings** (a stocked copper level for 11.1, an `80`-of-`100`
-vault for 11.2), so your word senses real data — no `.world.toml` to
+seeds its readings** (a stocked copper level for 13.1, an `80`-of-`100`
+vault for 13.2), so your word senses real data — no `.world.toml` to
 write.
 
-### Exercise 11.1 — `copper-empty?` ( -- flag )
+### Exercise 13.1 — `copper-empty?` ( -- flag )
 
 `SENSOR` the `@copper` level of `vault1` and leave `1` if it is empty
 (level = 0), else `0`. (The vault is seeded with copper, so it is *not*
@@ -152,7 +152,7 @@ mforth check copper-empty.fs
 ✓ sim-101/03-sense-empty — 1/1 cases pass
 ```
 
-### Exercise 11.2 — `over-half?` ( -- flag )
+### Exercise 13.2 — `over-half?` ( -- flag )
 
 `SENSOR` `vault1`'s `@totalItems` and `@itemCapacity`; leave `1` if
 `items * 2 > capacity`, else `0`. (The checker seeds an `80`-of-`100`
@@ -175,7 +175,7 @@ mforth check over-half.fs
 You can read the world and turn readings into flags. The last piece of a
 controller is doing something with that flag — flipping a switch, aiming
 a turret, configuring a sorter. Next:
-[chapter 12, Acting on the world](./12-controlling.md), where
+[chapter 14, Acting on the world](./14-controlling.md), where
 `CONTROL-ENABLED` turns a decision into an action. Then
-[chapter 13](./13-control-loop.md) wires sense → decide → act into one
+[chapter 15](./15-control-loop.md) wires sense → decide → act into one
 loop.

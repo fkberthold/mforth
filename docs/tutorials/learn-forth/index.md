@@ -54,6 +54,8 @@ checkable.
 | 7 | [State & variables](07-state.md) | `VARIABLE`, `@`, `!` |
 | 8 | [Output](08-output.md) | `S" …"`, `PRINT`, and `.` |
 | 9 | [Factoring](09-factoring.md) | Composing small, well-named words |
+| 10 | [Words that make words](10-defining-words.md) | `CREATE`, `,`, `DOES>`, and building `CONSTANT` yourself |
+| 11 | [Macros](11-macros.md) | `MACRO: name … ;` — compile-time substitution |
 
 ## Part II — Forth in the simulator
 
@@ -61,11 +63,11 @@ Now we make it real: read and react to a simulated Mindustry world.
 
 | # | Chapter | You'll learn |
 |---|---------|--------------|
-| 10 | [Meet the simulator](10-simulator.md) | The world, blocks, the `.world.toml` sidecar |
-| 11 | [Reading the world](11-sensing.md) | `SENSOR` and `@`-properties |
-| 12 | [Acting on the world](12-controlling.md) | `CONTROL-ENABLED` & friends |
-| 13 | [A control loop](13-control-loop.md) | Sense → decide → act → `WAIT` |
-| 14 | [Capstone: the sorter](14-capstone.md) | Build a real controller, milestone by milestone |
-| 15 | [Where next](15-where-next.md) | Compile to real mlog, optimize, and keep going |
+| 12 | [Meet the simulator](12-simulator.md) | The world, blocks, the `.world.toml` sidecar |
+| 13 | [Reading the world](13-sensing.md) | `SENSOR` and `@`-properties |
+| 14 | [Acting on the world](14-controlling.md) | `CONTROL-ENABLED` & friends |
+| 15 | [A control loop](15-control-loop.md) | Sense → decide → act → `WAIT` |
+| 16 | [Capstone: the sorter](16-capstone.md) | Build a real controller, milestone by milestone |
+| 17 | [Where next](17-where-next.md) | Compile to real mlog, optimize, and keep going |
 
 Ready? Start with [Chapter 1 — The stack & postfix](01-stack.md).
