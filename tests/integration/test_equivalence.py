@@ -51,6 +51,7 @@ from mforth.backend.mlog.slots import allocate_slots
 from mforth.backend.runner import Runner, build_world
 from mforth.backend.sidecar import WorldConfig, load_sidecar
 from mforth.dictionary import resolve, standard_dictionary
+from mforth.expand import expand
 from mforth.mlog_interp import MlogInterpreter
 from mforth.parse import parse
 from mforth.stackcheck import stackcheck
@@ -149,6 +150,12 @@ def _run_mlog(fs_path: Path, iterations: int) -> list:
     text = fs_path.read_text()
     program = parse(text, file=str(fs_path))
     dictionary = resolve(program, dictionary=dictionary)
+    # Run the real compiler's single meta-elimination seam between resolve
+    # and stackcheck — mirroring mforth.optimize.compile_text and the host
+    # Runner.from_path. ``expand`` performs the CREATE/,/DOES> stamp+strip
+    # (and the macro fixpoint); for non-meta fixtures it is an identity
+    # transform. Skipping it here used to mask the seam in the wrong layer.
+    program = expand(program, dictionary)
     result = stackcheck(program, dictionary=dictionary)
     slots = allocate_slots(result)
     instrs = emit(result, slots)

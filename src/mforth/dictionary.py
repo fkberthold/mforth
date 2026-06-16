@@ -760,8 +760,25 @@ def resolve(program: Program, dictionary: Optional[Dictionary] = None) -> Dictio
     for var in _collect_variable_declarations(program):
         d.add_variable(var)
 
+    # Phase 0a — CREATE/,/DOES> defining-word TOLERANCE (bead mforth-7h1.2).
+    # ``resolve``'s contract is to build the dictionary + check resolution; it
+    # must NOT transform/mutate the program and must NOT compute stamps or raise
+    # CellBoundaryError. So we only collect the names the existence check must
+    # tolerate — the meta-words (CREATE / , / DOES>), every defining-word name,
+    # and every stamped-child name — via a pure name walk. The actual
+    # register-stamp+strip (and any CellBoundaryError) happens in ``expand``,
+    # the single meta-elimination seam (design D1/D12), which runs between
+    # ``resolve`` and ``stackcheck`` in every real pipeline.
+    from mforth.expand import collect_tolerated_names  # local import: avoid cycle
+
+    tolerated = collect_tolerated_names(program)
+
     def check(t) -> None:
-        if isinstance(t, WordCall) and t.name not in d:
+        if (
+            isinstance(t, WordCall)
+            and t.name not in d
+            and t.name.lower() not in tolerated
+        ):
             raise UnresolvedWordError(t.name, t.src_loc)
 
     _walk_terms(program.main, check)
