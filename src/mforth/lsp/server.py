@@ -69,10 +69,17 @@ from mforth.backend.sidecar import SidecarError, parse_sidecar
 from mforth.dictionary import (
     BuiltinWord,
     Definition,
+    Macro,
     UnresolvedWordError,
     UserVariable,
     resolve,
     standard_dictionary,
+)
+from mforth.expand import (
+    CellBoundaryError,
+    ExpandError,
+    PurityError,
+    expand,
 )
 from mforth.lex import LexError
 from mforth.parse import (
@@ -178,6 +185,20 @@ def analyze_document(text: str, *, uri: str) -> List[lsp.Diagnostic]:
     except UnresolvedWordError as e:
         return [_diag(e.src_loc.line, e.src_loc.col, str(e.args[0]).split(": ", 2)[-1])]
 
+    # Phase-0 expand (bead mforth-7h1.4, design D13). Slotted BETWEEN resolve
+    # and stackcheck so the LSP analyzes the post-expansion AST and agrees with
+    # ``mforth compile`` (which orders the pipeline identically — see
+    # ``optimize.compile_text``). Without this, a defining-word / macro document
+    # diverges: stackcheck would see un-stripped meta-words and either report a
+    # phantom ``unresolved word 'CREATE'`` or crash on a surviving ``Macro``
+    # entry. The meta-errors (``CellBoundaryError`` / ``PurityError`` /
+    # ``ExpandError``) carry no per-token src_loc in v1, so they anchor at the
+    # file head (line 1, col 1) — mirrors the ``analyze_sidecar`` convention.
+    try:
+        program = expand(program, dictionary)
+    except (CellBoundaryError, PurityError, ExpandError) as e:
+        return [_diag(1, 1, str(e.args[0]) if e.args else str(e))]
+
     try:
         stackcheck(program, dictionary=dictionary)
     except UnresolvedWordError as e:
@@ -280,14 +301,36 @@ def hover_for(
     except (LexError, ParseError):
         return None
 
+    # Positioning uses the PRE-EXPAND parse (above): a stamped child like
+    # ``TROMBONES`` is inlined to a literal push by expand, so its WordCall
+    # only exists in the un-expanded AST. But the EFFECT we render must come
+    # from the POST-EXPAND dictionary (which carries the stamped child + user
+    # macros as ``Macro`` entries). ``expand`` mutates its program + dictionary
+    # in place, so build them from a SECOND parse to keep the positioning AST
+    # intact. Mirrors the resolve→expand→stackcheck order of ``mforth compile``
+    # (design D13). Any meta-failure (CellBoundaryError/PurityError/ExpandError)
+    # leaves us without effects — hover degrades to literal/built-in shapes.
     try:
         dictionary = resolve(program)
     except UnresolvedWordError:
         return None
 
+    sc_result = None
     try:
-        sc_result = stackcheck(program, dictionary=dictionary)
-    except (StackError, UnresolvedWordError):
+        eff_program = parse(text, file=file)
+        eff_dictionary = resolve(eff_program)
+        eff_program = expand(eff_program, eff_dictionary)
+        dictionary = eff_dictionary
+        sc_result = stackcheck(eff_program, dictionary=eff_dictionary)
+    except (
+        StackError,
+        UnresolvedWordError,
+        CellBoundaryError,
+        PurityError,
+        ExpandError,
+        LexError,
+        ParseError,
+    ):
         sc_result = None
 
     term = _term_at_position(program, position)
@@ -412,6 +455,8 @@ def _format_hover(term, dictionary, sc_result) -> str | None:
             return _format_user_def(entry, sc_result)
         if isinstance(entry, UserVariable):
             return _format_user_var(entry)
+        if isinstance(entry, Macro):
+            return _format_macro(entry, dictionary)
     if isinstance(term, VarRef):
         entry = dictionary.lookup(term.name)
         if isinstance(entry, UserVariable):
@@ -460,6 +505,60 @@ def _format_user_var(entry: UserVariable) -> str:
         f"{entry.name} ( -- addr )\n"
         f"variable defined at {loc.file}:{loc.line}:{loc.col}"
     )
+
+
+def _macro_stack_effect(entry: Macro, dictionary) -> "tuple[int, int] | None":
+    """Compute a ``Macro``'s statically-known stack effect (bead mforth-7h1.4,
+    design D7/F15).
+
+    A ``Macro`` entry is either a B3 user macro (``MACRO: name body ;``) or a
+    B2 stamped CREATE/,/DOES> child (``76 CONSTANT TROMBONES`` → a single
+    literal push). Because ``expand`` has already run, the macro body is fully
+    inlined (zero surviving ``Macro`` calls), so its effect is computable by
+    the SAME stackcheck the compiler runs — we wrap the body in a synthetic
+    one-shot ``Definition`` and read back the inferred effect. The auto-pushed
+    field address that a DOES> child consumes is already baked into the stamped
+    body, so a stamped child renders ``( 0 -- 1 )`` (zero in, one out).
+
+    Returns ``(in_arity, out_arity)`` or ``None`` if the effect can't be
+    inferred (a malformed / not-stack-valid body — hover then falls back to
+    the ``( ? -- ? )`` placeholder)."""
+    synth_name = f"__macro_hover_{entry.name}"
+    synth = Definition(name=synth_name, body=list(entry.body), src_loc=SrcLoc("<macro>", 1, 1))
+    synth_program = Program(definitions=[synth], main=[])
+    d = dictionary.copy() if hasattr(dictionary, "copy") else dictionary
+    d._entries[synth_name.lower()] = synth  # noqa: SLF001
+    try:
+        # The dictionary stores macro entries with their ORIGINAL (un-inlined)
+        # bodies — a nested macro (``MACRO: quad dbl dbl ;``) still calls
+        # ``dbl`` as a ``Macro`` WordCall. Run ``expand`` on the synthetic
+        # wrapper so those nested macro calls inline to a meta-free body before
+        # stackcheck (which raises ``TypeError`` on a surviving ``Macro``).
+        synth_program = expand(synth_program, d)
+        result = stackcheck(synth_program, dictionary=d)
+    except (
+        StackError,
+        UnresolvedWordError,
+        TypeError,
+        CellBoundaryError,
+        PurityError,
+        ExpandError,
+    ):
+        return None
+    eff = result.effects.get(synth_name)
+    if eff is None:
+        return None
+    return (eff.in_arity, eff.out_arity)
+
+
+def _format_macro(entry: Macro, dictionary) -> str:
+    """Render a hover for a ``Macro`` entry: its name + stamped/inlined stack
+    effect. Covers both B3 user macros and B2 stamped CREATE/,/DOES> children
+    (which carry no source location, so the body line names the kind rather
+    than a ``defined at`` anchor)."""
+    eff = _macro_stack_effect(entry, dictionary)
+    eff_str = _format_stack_effect(*eff) if eff is not None else "( ? -- ? )"
+    return f"{entry.name} {eff_str}\nmeta-word (expanded inline)"
 
 
 # ---------------------------------------------------------------------------
@@ -581,6 +680,15 @@ def completions_for(
         for var in in_scope_vars:
             items.append(_user_var_completion(var))
 
+        # Meta-words (bead mforth-7h1.4, design D13): user macros
+        # (``MACRO: name ... ;``) and stamped CREATE/,/DOES> children
+        # (``76 CONSTANT TROMBONES``) become ``Macro`` entries only AFTER the
+        # phase-0 expand pass runs. Build the post-expand dictionary from a
+        # SECOND parse (expand mutates its program + dictionary in place) and
+        # surface every in-scope ``Macro`` as a completion candidate.
+        for name, eff in _meta_words_in_scope(text, file, position):
+            items.append(_macro_completion(name, eff))
+
     # 4. Sidecar link names — load from the on-disk sibling `.world.toml`
     # if present. Failures (file missing, TOML malformed, schema error)
     # all degrade to "no link completions" rather than crashing.
@@ -631,6 +739,24 @@ def _user_var_completion(var: UserVariable) -> lsp.CompletionItem:
         documentation=lsp.MarkupContent(
             kind=lsp.MarkupKind.PlainText,
             value=f"variable defined at {loc.file}:{loc.line}:{loc.col}",
+        ),
+    )
+
+
+def _macro_completion(
+    name: str, eff: "tuple[int, int] | None"
+) -> lsp.CompletionItem:
+    """Completion item for a meta-word (user macro or stamped CREATE/,/DOES>
+    child). Both expand inline; the ``detail`` shows the inferred stack effect
+    so a stamped CONSTANT child reads ``( 0 -- 1 )``."""
+    detail = _format_stack_effect(*eff) if eff is not None else "( ? -- ? )"
+    return lsp.CompletionItem(
+        label=name,
+        kind=lsp.CompletionItemKind.Function,
+        detail=detail,
+        documentation=lsp.MarkupContent(
+            kind=lsp.MarkupKind.PlainText,
+            value="meta-word (expanded inline)",
         ),
     )
 
@@ -708,6 +834,73 @@ def _user_defs_in_scope(program: Program, cursor: lsp.Position) -> list[Definiti
         end_line, end_col = end
         if _position_strictly_before(end_line, end_col, cursor):
             result.append(defn)
+    return result
+
+
+def _macro_decl_line(entry: Macro, fallback_program_macro) -> "int | None":
+    """Best-effort 1-based declaration line for a ``Macro`` entry.
+
+    A user macro (``MACRO: name body ;``) carries no ``src_loc`` on the parsed
+    ``Macro``, so we read the line off its body's first term (the macro body is
+    written on the declaration line). A stamped CREATE/,/DOES> child's body is
+    the literal push synthesized at the invocation site, so the same first-term
+    read yields the invocation line. Returns ``None`` for an empty body
+    (treated as always-visible by the caller)."""
+    src = fallback_program_macro.body if fallback_program_macro is not None else entry.body
+    for term in src:
+        loc = getattr(term, "src_loc", None)
+        if loc is not None:
+            return loc.line
+    return None
+
+
+def _meta_words_in_scope(
+    text: str, file: str, cursor: lsp.Position
+) -> "list[tuple[str, tuple[int, int] | None]]":
+    """Return ``[(macro_name, stack_effect), ...]`` for every meta-word
+    (user macro + stamped CREATE/,/DOES> child) declared strictly before the
+    cursor line (bead mforth-7h1.4, design D13).
+
+    Meta-words only become ``Macro`` entries AFTER the phase-0 ``expand`` pass.
+    ``expand`` mutates its program + dictionary in place, so we run it on a
+    SECOND parse to avoid disturbing the caller's positioning AST. The
+    source-order rule is line-granular (a meta-word is usable on the line after
+    its declaration completes) — finer than ``;``-column tracking, but a macro /
+    defining word is always written single-line in v1 fixtures and completion is
+    a teaching aid, not a validator. Any meta-failure → no meta completions."""
+    try:
+        program = parse(text, file=file)
+        dictionary = resolve(program)
+        # `program.macros` (pre-expand) carries the user-macro bodies with src
+        # locs; capture them BEFORE expand mutates the dictionary so we can read
+        # declaration lines off the parsed bodies.
+        program_macros = {
+            m.name.lower(): m for m in getattr(program, "macros", [])
+        }
+        expand(program, dictionary)
+    except (
+        LexError,
+        ParseError,
+        UnresolvedWordError,
+        CellBoundaryError,
+        PurityError,
+        ExpandError,
+    ):
+        return []
+
+    standard = standard_dictionary()
+    result: list[tuple[str, tuple[int, int] | None]] = []
+    cursor_line_1based = cursor.line + 1
+    for name_lc, entry in dictionary._entries.items():  # noqa: SLF001
+        if not isinstance(entry, Macro):
+            continue
+        if name_lc in standard:
+            continue  # a builtin shadowed by a Macro is not a user meta-word
+        decl_line = _macro_decl_line(entry, program_macros.get(name_lc))
+        if decl_line is not None and decl_line >= cursor_line_1based:
+            continue  # declared at-or-after the cursor line → not yet in scope
+        eff = _macro_stack_effect(entry, dictionary)
+        result.append((entry.name, eff))
     return result
 
 
